@@ -1,0 +1,877 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Grudge Match</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bowlby+One&family=Bricolage+Grotesque:wght@400;600;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --cobalt:#2B3BD6; --cobalt-deep:#1E2AA8; --paper:#FFF7E6; --ink:#161A4A;
+  --sun:#FFC93C; --pink:#FF5C9E; --good:#36C98A; --bad:#E5412F;
+  --display:"Bowlby One","Arial Black",Impact,sans-serif;
+  --body:"Bricolage Grotesque",system-ui,-apple-system,"Segoe UI",sans-serif;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme:dark){ :root:not([data-theme="light"]){ --cobalt:#1C2690; --cobalt-deep:#121a66; } }
+:root[data-theme="dark"]{ --cobalt:#1C2690; --cobalt-deep:#121a66; }
+*,*::before,*::after{box-sizing:inherit}
+html{height:100%;scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;min-height:100%;background:var(--cobalt);color:var(--ink);font-family:var(--body);font-size:17px;line-height:1.4;
+  -webkit-tap-highlight-color:transparent;-webkit-user-select:none;user-select:none;overscroll-behavior:none}
+#app{max-width:480px;margin:0 auto;padding:14px 14px 28px}
+h1,h2,h3{font-family:var(--display);font-weight:400;margin:0;line-height:1.02}
+.logo{font-family:var(--display);color:var(--sun);font-size:clamp(46px,15vw,72px);line-height:.9;text-shadow:4px 4px 0 var(--ink);
+  transform:rotate(-3deg);margin:18px 0 6px}
+.logo span{display:block;color:var(--pink)}
+.tag{color:var(--paper);opacity:.85;margin:0 0 18px}
+.card{background:var(--paper);border:3px solid var(--ink);border-radius:18px;box-shadow:5px 5px 0 var(--ink);padding:18px;margin:0 0 16px}
+.card h2{font-size:28px;margin-bottom:8px}
+.card p{margin:6px 0}
+label{display:block;font-weight:800;margin:10px 0 4px}
+input{width:100%;font:inherit;font-size:20px;padding:12px 14px;border:3px solid var(--ink);border-radius:12px;background:#fff;color:var(--ink);-webkit-user-select:text;user-select:text}
+input:focus-visible,button:focus-visible{outline:3px solid var(--pink);outline-offset:2px}
+.btn{display:block;width:100%;font-family:var(--display);font-size:22px;padding:14px 16px;margin:12px 0 0;border:3px solid var(--ink);border-radius:14px;
+  background:var(--sun);color:var(--ink);box-shadow:4px 4px 0 var(--ink);cursor:pointer;touch-action:manipulation}
+.btn:active{transform:translate(3px,3px);box-shadow:1px 1px 0 var(--ink)}
+.btn.alt{background:var(--pink)}
+.btn.ghost{background:transparent;box-shadow:none;font-family:var(--body);font-weight:800;font-size:17px}
+.btn:disabled{opacity:.45;pointer-events:none}
+.seg{display:flex;gap:8px}
+.seg button{flex:1;font:800 18px var(--body);padding:10px;border:3px solid var(--ink);border-radius:12px;background:#fff;color:var(--ink);cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--ink);color:var(--paper)}
+.err{color:var(--bad);font-weight:800;min-height:1.4em;margin-top:8px}
+.banner{background:var(--sun);border:3px solid var(--ink);border-radius:12px;padding:8px 12px;font-size:14px;margin-bottom:14px}
+.code{font-family:var(--display);font-size:64px;letter-spacing:.08em;text-align:center;margin:8px 0}
+.muted{opacity:.7}
+.center{text-align:center}
+
+/* scoreboard */
+.score{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:8px;color:var(--paper);margin:4px 0 14px}
+.score .pl{font-weight:800;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.score .pl.r{text-align:right}
+.score .nums{font-family:var(--display);font-size:30px;display:flex;gap:10px;align-items:center}
+.score .nums b{font-weight:400;min-width:1.2ch;text-align:center}
+.score .vs{font-family:var(--body);font-weight:800;font-size:13px;opacity:.8}
+.c1{color:var(--sun)} .c2{color:var(--pink)}
+.dot{display:inline-block;width:12px;height:12px;border-radius:50%;border:2px solid var(--ink);vertical-align:-1px;margin-right:6px}
+.dot.p1{background:var(--sun)} .dot.p2{background:var(--pink)}
+
+.status{font-family:var(--display);font-size:24px;color:var(--paper);text-align:center;margin:6px 0 12px;text-shadow:3px 3px 0 var(--ink)}
+.status.mine{color:var(--sun)}
+
+/* grids */
+.grid{display:grid;gap:6px;margin:0 auto}
+.cell{aspect-ratio:1;border:3px solid var(--ink);border-radius:10px;background:#fff;display:flex;align-items:center;justify-content:center;
+  font-family:var(--display);color:var(--ink);cursor:pointer;padding:0;touch-action:manipulation;position:relative}
+.cell:disabled{cursor:default}
+.cell.sm{border-width:2px;border-radius:6px}
+.mini-wrap{margin-top:16px}
+.mini-wrap h3{font-size:16px;color:var(--paper);margin-bottom:6px;font-family:var(--body);font-weight:800}
+.mini{max-width:200px;margin:0}
+.legend{display:flex;align-items:center;gap:6px;color:var(--paper);font-size:14px;font-weight:800;margin:12px 0 0}
+.legend .bar{flex:1;height:14px;border:2px solid var(--ink);border-radius:8px;
+  background:linear-gradient(90deg,#FFF3B0,#FFE066,#F9C22E,#F28C28,#E5512A,#C0141E)}
+
+/* ttt */
+.ttt{grid-template-columns:repeat(3,1fr);max-width:340px;gap:10px}
+.ttt .cell{font-size:64px;border-radius:16px}
+.mark-p1{color:var(--ink);background:var(--sun)!important}
+.mark-p2{color:var(--ink);background:var(--pink)!important}
+
+/* race */
+.lane{position:relative;height:74px;background:var(--paper);border:3px solid var(--ink);border-radius:14px;margin:0 0 12px;overflow:hidden}
+.lane .finish{position:absolute;right:0;top:0;bottom:0;width:18px;
+  background:repeating-conic-gradient(var(--ink) 0 25%,#fff 0 50%) 0 0/12px 12px;border-left:3px solid var(--ink)}
+.lane .cube{position:absolute;top:13px;left:8px;width:42px;height:42px;border:3px solid var(--ink);border-radius:8px;transition:left .08s linear}
+.lane .who{position:absolute;left:60px;top:22px;font-weight:800;opacity:.5;font-size:15px}
+.pad{height:42vh;min-height:220px;border:3px solid var(--ink);border-radius:22px;background:var(--sun);box-shadow:5px 5px 0 var(--ink);
+  display:flex;align-items:center;justify-content:center;font-family:var(--display);font-size:44px;touch-action:none}
+.pad.off{background:var(--paper);opacity:.7}
+.pad.hit{transform:translate(2px,2px);box-shadow:3px 3px 0 var(--ink)}
+.big-count{font-family:var(--display);font-size:120px;color:var(--sun);text-align:center;text-shadow:5px 5px 0 var(--ink);line-height:1}
+
+/* pig */
+.die{width:132px;height:132px;margin:8px auto 14px;background:#fff;border:4px solid var(--ink);border-radius:24px;box-shadow:5px 5px 0 var(--ink);
+  display:grid;grid-template:repeat(3,1fr)/repeat(3,1fr);padding:16px}
+.die i{width:24px;height:24px;border-radius:50%;background:var(--ink);place-self:center;visibility:hidden}
+.die i.on{visibility:visible}
+.die.bust{background:var(--bad)} .die.bust i{background:#fff}
+.die.roll{animation:shake .35s}
+@keyframes shake{0%,100%{transform:rotate(0)}25%{transform:rotate(-14deg)}50%{transform:rotate(10deg)}75%{transform:rotate(-6deg)}}
+.pigrow{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;margin:8px 0;font-weight:800}
+.meter{height:16px;border:3px solid var(--ink);border-radius:10px;background:#fff;overflow:hidden}
+.meter i{display:block;height:100%}
+.pot{font-family:var(--display);font-size:26px;text-align:center;margin:4px 0}
+.row2{display:flex;gap:10px}.row2 .btn{flex:1}
+
+/* clock */
+.clock{font-family:var(--display);font-size:92px;text-align:center;color:var(--paper);text-shadow:5px 5px 0 var(--ink);margin:30px 0 24px;font-variant-numeric:tabular-nums}
+.stop{height:200px;border-radius:50%;width:200px;margin:0 auto;display:flex;align-items:center;justify-content:center;font-size:40px;background:var(--bad);color:#fff}
+
+/* draw */
+.draw-screen{min-height:62vh;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;border-radius:22px;border:3px solid var(--ink);padding:20px;background:var(--paper)}
+.draw-screen.dark{background:#000;color:#555}
+.draw-screen.bang{background:var(--sun)}
+.draw-screen.foul{background:var(--bad);color:#fff}
+.draw-screen h2{font-size:54px}
+.shots{display:flex;gap:8px;justify-content:center;margin:10px 0}
+
+/* hint labels */
+.hint{font-family:var(--body);font-weight:800;font-size:11px;position:absolute;bottom:2px;left:0;right:0;text-align:center}
+.h-hot{background:#E5512A!important;color:#fff}.h-warm{background:#F9C22E!important}.h-cold{background:#9DB7FF!important}
+.picked{background:var(--ink)!important;color:var(--paper)}
+
+/* result */
+.slam{font-family:var(--display);font-size:clamp(34px,10vw,48px);color:var(--sun);text-shadow:4px 4px 0 var(--ink);margin:20px 0 8px;line-height:1.05;
+  animation:slam .45s cubic-bezier(.2,1.6,.4,1) both}
+.slam.lose{color:var(--pink)}
+.verdict{color:var(--paper);font-weight:800;font-size:20px;margin:0 0 4px}
+.detail{color:var(--paper);opacity:.85;margin:0 0 16px}
+@keyframes slam{from{transform:scale(1.8) rotate(-6deg);opacity:0}to{transform:none;opacity:1}}
+.picks{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.pick{font:800 17px var(--body);text-align:left;padding:12px;border:3px solid var(--ink);border-radius:14px;background:var(--paper);color:var(--ink);
+  box-shadow:3px 3px 0 var(--ink);cursor:pointer;min-height:84px}
+.pick small{display:block;font-weight:400;font-size:13px;opacity:.75;margin-top:4px}
+.pick:disabled{opacity:.35;box-shadow:none;text-decoration:line-through}
+.pick:active{transform:translate(2px,2px);box-shadow:1px 1px 0 var(--ink)}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+/* ===== FIREBASE CONFIG (same project as Deep Salvo and Sovereign) ===== */
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyBcsUoFs2p9MBd_ZA5QdCznjmhYimHGmw0",
+  authDomain: "battle-ship-7f0d9.firebaseapp.com",
+  projectId: "battle-ship-7f0d9",
+  storageBucket: "battle-ship-7f0d9.firebasestorage.app",
+  messagingSenderId: "622001257172",
+  appId: "1:622001257172:web:841fb2a3f10a8d5ce11941"
+};
+// Local test mode (two tabs, no Firebase): add ?local to the address.
+const LOCAL = new URLSearchParams(location.search).has("local");
+const COLL = "mgames";
+const BAD=["CUM","DIC","COC","PUS","KOC","WHR","FAP","JAP","SPIC","SPC","CHNK","GOOK","GK","HOMO","HMO","TRAN","LES","LEZ","QUER","DYKE","KUM","JIZ","JZZ","SEX","SXY","SX","XXX","FUK","FUC","FUQ","FUX","FCK","FK","FKU","PHUK","CUNT","CNT","KUNT","COCK","COK","KOK","CCK","DIK","DICK","DCK","DIX","DYK","PUSS","PUSY","PSY","PSSY","TIT","TT","TWAT","TWT","VAG","VAJ","VJ","BJ","HJ","ANAL","ANL","ANUS","ASS","AZZ","BUTT","BUT","BUM","BUTTH","BOOB","BOB","NUT","NUTS","PORN","PRN","PORNO","HORNY","HRNY","HUMP","SLUT","SLT","WHORE","WHOR","HOE","HO","THOT","SUCK","SUK","SUCC","LICK","LCK","BLOW","BJOB","CLIT","CLT","PENIS","PENI","PNS","PEN","WANK","WNK","JERK","JRK","NUDE","NUD","FAG","FAGG","FGT","GAY","NIG","NIGG","NGR","NGGR","NGA","KKK","KK","NAZI","NAZ","NZ","HITLR","SHIT","SHT","SHT","CRAP","CRP","PISS","PIS","PSS","PEE","POO","POOP","TURD","DAMN","DMN","DAM","HELL","HEL","BTCH","BICH","BCH","BITCH","DUMB","STFU","WTF","FML","FU","KYS","DIE","KILL","RAPE","RAP","RAPY","MOLEST","PEDO","PED","CHILD","DRUG","METH","LSD","WEED","HMP","MILF","MLF","GILF","DILF","BDSM","BDS","KINK","NSFW","HENT","HNTY","XXL","SEXY","SEXI"];
+function isClean(s){ const u = String(s).toUpperCase().replace(/[^A-Z]/g, ""); return !BAD.some(b => u.includes(b)); }
+
+/* ---------------- messages ---------------- */
+const WIN_MSGS = [
+  "Okay, so you won. Do you want a cookie?",
+  "Wow, you're so amazing 🙄",
+  "Congrats. I'll alert the media.",
+  "You won. Try not to let it go to your head. Too late.",
+  "Your trophy is in the mail. There is no mail.",
+  "Fine. You win. Happy now?",
+  "Even a broken clock is right twice a day.",
+  "Winner winner, no dinner.",
+  "Statistically, this was bound to happen eventually."
+];
+const LOSE_MSGS = [
+  "You tried your best, so we should have anticipated this outcome",
+  "You lose! Surprised?",
+  "You have brought great shame upon your family",
+  "Have you considered a different hobby?",
+  "Losing builds character. You must have so much character.",
+  "Somewhere, a participation trophy weeps for you.",
+  "That was certainly an attempt.",
+  "Your opponent says thanks for the easy win.",
+  "Bold strategy. Didn't work, but bold."
+];
+let winIdx = 0, loseIdx = 0; const msgCache = {};
+function msgFor(key, won){
+  if(!(key in msgCache)) msgCache[key] = won ? WIN_MSGS[winIdx++ % WIN_MSGS.length] : LOSE_MSGS[loseIdx++ % LOSE_MSGS.length];
+  return msgCache[key];
+}
+
+/* ---------------- helpers ---------------- */
+const app = document.getElementById("app");
+const el = (html) => { const t = document.createElement("template"); t.innerHTML = html.trim(); return t.content.firstElementChild; };
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const opp = (p) => p === "p1" ? "p2" : "p1";
+const arr = (x) => Array.isArray(x) ? x : (x && typeof x === "object" ? Object.values(x) : []);
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+const rnd = (n) => Math.floor(Math.random() * n);
+const clone = (o) => JSON.parse(JSON.stringify(o));
+const cheb = (a, b, n) => Math.max(Math.abs(a % n - b % n), Math.abs(Math.floor(a / n) - Math.floor(b / n)));
+function prune(o){
+  if(Array.isArray(o)){ const a = o.map(prune).filter(v => v !== undefined && v !== null); return a.length ? a : undefined; }
+  if(o && typeof o === "object"){ const r = {}; for(const k in o){ const v = prune(o[k]); if(v !== undefined && v !== null) r[k] = v; } return Object.keys(r).length ? r : undefined; }
+  return o;
+}
+function setPath(obj, path, val){
+  const parts = path.split("/"); let o = obj;
+  for(let i = 0; i < parts.length - 1; i++){ if(typeof o[parts[i]] !== "object" || o[parts[i]] === null) o[parts[i]] = {}; o = o[parts[i]]; }
+  if(val === null || val === undefined) delete o[parts.at(-1)]; else o[parts.at(-1)] = val;
+}
+
+/* ---------------- backend ---------------- */
+const api = LOCAL ? (() => {
+  const ch = ("BroadcastChannel" in window) ? new BroadcastChannel("grudge") : null;
+  const subs = {};
+  const key = c => "grudge_" + c;
+  const read = c => { try { return JSON.parse(localStorage.getItem(key(c))); } catch { return null; } };
+  const write = (c, v) => { v = prune(v) ?? null; localStorage.setItem(key(c), JSON.stringify(v)); ch && ch.postMessage(c); fire(c); };
+  const fire = c => setTimeout(() => (subs[c] || []).forEach(f => f(read(c))), 0);
+  ch && (ch.onmessage = e => fire(e.data));
+  return {
+    listen(c, cb){ (subs[c] ||= []).push(cb); fire(c); return () => subs[c] = subs[c].filter(f => f !== cb); },
+    async get(c){ return read(c); },
+    async update(c, patch){ const v = read(c) || {}; for(const p in patch) setPath(v, p, patch[p]); write(c, v); },
+    async tx(c, mut){ const cur = read(c); if(!cur) return false; const v = clone(cur); if(mut(v) === false) return false; write(c, v); return true; },
+    now(){ return Date.now(); }
+  };
+})() : (() => {
+  let F, fs;
+  const ready = (async () => {
+    const V = "https://www.gstatic.com/firebasejs/10.12.2/";
+    const [A, U, D] = await Promise.all([import(V + "firebase-app.js"), import(V + "firebase-auth.js"), import(V + "firebase-firestore.js")]);
+    const fa = A.initializeApp(FIREBASE_CONFIG), auth = U.getAuth(fa);
+    await U.signInAnonymously(auth);
+    F = D; fs = D.getFirestore(fa);
+  })();
+  const ref = c => F.doc(fs, COLL, c);
+  return {
+    ready,
+    listen(c, cb){ let off = () => {}, dead = false;
+      ready.then(() => { if(dead) return; off = F.onSnapshot(ref(c), s => { if(!s.exists() && s.metadata.fromCache) return; cb(s.exists() ? s.data() : null); }, () => {}); });
+      return () => { dead = true; off(); }; },
+    async get(c){ await ready; const s = await F.getDoc(ref(c)); return s.exists() ? s.data() : null; },
+    async update(c, patch){ await ready; const p = {}; for(const k in patch) p[k.replace(/\//g, ".")] = patch[k];
+      const s = await F.getDoc(ref(c)); if(s.exists()) return F.updateDoc(ref(c), p);
+      const v = {}; for(const k in patch) setPath(v, k, patch[k]); return F.setDoc(ref(c), prune(v)); },
+    async tx(c, mut){ await ready;
+      return F.runTransaction(fs, async t => { const s = await t.get(ref(c)); if(!s.exists()) return false; const v = clone(s.data()); if(mut(v) === false) return false; t.set(ref(c), prune(v) || {}); return true; }); },
+    now(){ return Date.now(); }
+  };
+})();
+
+/* ---------------- audio ---------------- */
+let AC = null;
+function audio(){ if(!AC) AC = new (window.AudioContext || window.webkitAudioContext)(); if(AC.state === "suspended") AC.resume(); return AC; }
+function noiseBuf(sec){ const ac = audio(), b = ac.createBuffer(1, ac.sampleRate * sec, ac.sampleRate), d = b.getChannelData(0); for(let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1; return b; }
+function startWind(){
+  const ac = audio(), t = ac.currentTime, out = ac.createGain();
+  out.gain.setValueAtTime(0, t); out.gain.linearRampToValueAtTime(1, t + 1.5); out.connect(ac.destination);
+  const src = ac.createBufferSource(); src.buffer = noiseBuf(4); src.loop = true;
+  const bp = ac.createBiquadFilter(); bp.type = "bandpass"; bp.frequency.value = 420; bp.Q.value = 0.9;
+  const lfo = ac.createOscillator(), lg = ac.createGain(); lfo.frequency.value = 0.17; lg.gain.value = 260; lfo.connect(lg).connect(bp.frequency);
+  const wg = ac.createGain(); wg.gain.value = 0.32; src.connect(bp).connect(wg).connect(out);
+  const lp = ac.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = 260;
+  const dg = ac.createGain(); dg.gain.value = 0.07; lp.connect(dg).connect(out);
+  const o1 = ac.createOscillator(), o2 = ac.createOscillator(); o1.type = o2.type = "sawtooth"; o1.frequency.value = 55; o2.frequency.value = 58.3;
+  o1.connect(lp); o2.connect(lp);
+  [src, lfo, o1, o2].forEach(n => n.start());
+  return (fade = 0.08) => { const n = ac.currentTime; out.gain.cancelScheduledValues(n); out.gain.setValueAtTime(out.gain.value, n); out.gain.linearRampToValueAtTime(0, n + fade); setTimeout(() => [src, lfo, o1, o2].forEach(x => { try{ x.stop(); }catch{} }), fade * 1000 + 100); };
+}
+function bell(){
+  const ac = audio(), t = ac.currentTime, base = 440;
+  [[1, .5, 3.2], [2, .32, 2.4], [2.4, .22, 2.0], [3, .18, 1.6], [4.2, .12, 1.2], [5.4, .08, .9], [.5, .25, 3.6]].forEach(([r, a, d]) => {
+    const o = ac.createOscillator(), g = ac.createGain(); o.frequency.value = base * r; g.gain.setValueAtTime(a, t); g.gain.exponentialRampToValueAtTime(0.0001, t + d);
+    o.connect(g).connect(ac.destination); o.start(t); o.stop(t + d);
+  });
+  const n = ac.createBufferSource(), ng = ac.createGain(), hp = ac.createBiquadFilter(); n.buffer = noiseBuf(.05); hp.type = "highpass"; hp.frequency.value = 3000;
+  ng.gain.setValueAtTime(.4, t); ng.gain.exponentialRampToValueAtTime(.001, t + .05); n.connect(hp).connect(ng).connect(ac.destination); n.start(t);
+}
+function gunshot(){
+  const ac = audio(), t = ac.currentTime;
+  const n = ac.createBufferSource(), g = ac.createGain(), lp = ac.createBiquadFilter(); n.buffer = noiseBuf(.6);
+  lp.type = "lowpass"; lp.frequency.setValueAtTime(5000, t); lp.frequency.exponentialRampToValueAtTime(300, t + .4);
+  g.gain.setValueAtTime(1, t); g.gain.exponentialRampToValueAtTime(.001, t + .45); n.connect(lp).connect(g).connect(ac.destination); n.start(t);
+  const o = ac.createOscillator(), og = ac.createGain(); o.frequency.setValueAtTime(140, t); o.frequency.exponentialRampToValueAtTime(40, t + .2);
+  og.gain.setValueAtTime(.8, t); og.gain.exponentialRampToValueAtTime(.001, t + .25); o.connect(og).connect(ac.destination); o.start(t); o.stop(t + .3);
+}
+function tick(f = 880, d = .07){ try{ const ac = audio(), t = ac.currentTime, o = ac.createOscillator(), g = ac.createGain(); o.frequency.value = f; g.gain.setValueAtTime(.2, t); g.gain.exponentialRampToValueAtTime(.001, t + d); o.connect(g).connect(ac.destination); o.start(t); o.stop(t + d); }catch{} }
+
+/* ---------------- motion ---------------- */
+let motionMode = null, topUp = 0, gotOri = false;
+async function requestMotion(){
+  if(motionMode) return motionMode;
+  try{
+    if(typeof DeviceOrientationEvent !== "undefined" && typeof DeviceOrientationEvent.requestPermission === "function"){
+      const r = await DeviceOrientationEvent.requestPermission(); if(r !== "granted") return motionMode = "tap";
+    }
+  }catch{ return motionMode = "tap"; }
+  window.addEventListener("deviceorientation", e => { if(e.beta != null){ topUp = Math.sin(e.beta * Math.PI / 180); gotOri = true; } });
+  await sleep(700);
+  return motionMode = gotOri ? "motion" : "tap";
+}
+const holstered = () => topUp < -0.6;   // top of phone pointing down
+const drawn = () => topUp > -0.2;       // raised to roughly level or higher
+
+/* ---------------- session / state ---------------- */
+const STORE = LOCAL ? sessionStorage : localStorage;
+const INVITE = (new URLSearchParams(location.search).get("g") || "").toUpperCase().slice(0, 4);
+let S = JSON.parse(STORE.getItem("grudge_s") || "null"); // {code,pid,name}
+let R = null, unsub = null;
+const saveS = () => STORE.setItem("grudge_s", JSON.stringify(S));
+const nm = (p) => R?.players?.[p]?.name || (p === "p1" ? "Player 1" : "Player 2");
+const me = () => S.pid;
+
+function txg(mut){ const n = R.gameNum; return api.tx(S.code, cur => { if(cur.phase !== "playing" || cur.gameNum !== n) return false; cur.g ||= {}; return mut(cur.g, cur); }); }
+function endIn(cur, winner, detail){
+  cur.score ||= {p1: 0, p2: 0}; cur.score[winner] = (cur.score[winner] || 0) + 1;
+  cur.used = arr(cur.used).concat(cur.current);
+  cur.lastLoser = opp(winner);
+  cur.result = {winner, game: cur.current, detail: detail || "", n: cur.gameNum};
+  cur.phase = cur.score[winner] >= Math.ceil(cur.bestOf / 2) ? "over" : "result";
+}
+function startGame(cur, id, first){
+  cur.current = id; cur.gameNum = (cur.gameNum || 0) + 1; cur.g = GAMES[id].init(first, cur); cur.g.first = first; cur.phase = "playing"; delete cur.result;
+}
+
+/* ---------------- games ---------------- */
+const GAMES = {};
+
+/* ---- Quick Draw ---- */
+GAMES.draw = {
+  title: "Quick Draw", short: "Raise and fire on the bell",
+  blurb: "Hold your phone at your hip, top pointing down. When the bell rings, raise it and fire. Raise early and you lose the shot. First to 2 shots.",
+  init: () => ({shot: 1, wins: {p1: 0, p2: 0}}),
+  mount(root){
+    const L = this.L = {shot: 0, step: "idle", stopWind: null, timers: [], t0: 0, raf: 0};
+    this.root = root;
+  },
+  clear(){ const L = this.L; L.timers.forEach(clearTimeout); L.timers = []; cancelAnimationFrame(L.raf); if(L.stopWind){ L.stopWind(); L.stopWind = null; } window.onpointerdown = null; },
+  unmount(){ this.clear(); },
+  update(g){
+    const L = this.L, p = me(), shot = g.shot || 1;
+    if(L.shot !== shot){ this.clear(); L.shot = shot; L.step = "ready"; this.paint(g); }
+    const rdy = g.ready || {};
+    // both ready -> create go
+    if(rdy.p1 === shot && rdy.p2 === shot && !(g.go && g.go.shot === shot)){
+      txg(gs => { const r = gs.ready || {}; if(r.p1 !== gs.shot || r.p2 !== gs.shot || (gs.go && gs.go.shot === gs.shot)) return false; gs.go = {shot: gs.shot, delay: 3000 + rnd(5000)}; });
+    }
+    if(g.go && g.go.shot === shot && L.step === "waiting") this.standoff(g.go.delay);
+    // resolve
+    const res = g.res || {};
+    if(res.p1?.shot === shot && res.p2?.shot === shot){
+      txg((gs, cur) => {
+        const r = gs.res || {}; if(r.p1?.shot !== gs.shot || r.p2?.shot !== gs.shot) return false;
+        const score = x => x.foul ? Infinity : x.rt;
+        const a = score(r.p1), b = score(r.p2);
+        const w = a === b ? null : (a < b ? "p1" : "p2");
+        gs.last = {shot: gs.shot, p1: r.p1, p2: r.p2, winner: w};
+        gs.wins ||= {p1: 0, p2: 0};
+        if(w){ gs.wins[w] = (gs.wins[w] || 0) + 1;
+          if(gs.wins[w] >= 2){ endIn(cur, w, `${nm(w)} won the draw ${gs.wins[w]}–${gs.wins[opp(w)] || 0}`); return; } }
+        gs.shot++; delete gs.ready; delete gs.go; delete gs.res;
+      });
+    }
+    if(L.step === "ready" || L.step === "holster" || L.step === "waiting") this.paint(g);
+  },
+  fmt(x){ return !x ? "–" : x.foul ? "foul" : (x.rt / 1000).toFixed(3) + "s"; },
+  paint(g){
+    const L = this.L, p = me(), wins = g.wins || {}, last = g.last;
+    let body = "";
+    if(L.step === "ready"){
+      body = `<h2>Shot ${L.shot}</h2>
+        ${last ? `<p><b>Last shot:</b> you ${this.fmt(last[p])}, ${esc(nm(opp(p)))} ${this.fmt(last[opp(p)])}${last.winner ? "" : " (no winner, reshoot)"}</p>` : ""}
+        <p>${motionMode === "tap" ? "No motion sensor found. Tap the screen when the bell rings." : "Lower your phone to your hip, top pointing down. Raise it when the bell rings."}</p>
+        <button class="btn" data-a="ready">Ready</button>`;
+    } else if(L.step === "holster"){
+      body = `<h2>Holster it</h2><p>Lower the phone to your hip, top pointing down, and hold still.</p>`;
+    } else if(L.step === "waiting"){
+      body = `<h2>Steady…</h2><p>Waiting for ${esc(nm(opp(p)))} to holster.</p>`;
+    }
+    this.root.innerHTML = "";
+    this.root.append(el(`<div><div class="status">Quick Draw</div>
+      <div class="shots"><span class="dot p1"></span>${esc(nm("p1"))} ${wins.p1 || 0} &nbsp; ${wins.p2 || 0} ${esc(nm("p2"))}<span class="dot p2" style="margin:0 0 0 6px"></span></div>
+      <div class="draw-screen">${body}</div></div>`));
+    const b = this.root.querySelector("[data-a=ready]");
+    if(b) b.onclick = async () => {
+      audio(); await requestMotion();
+      if(motionMode === "tap"){ L.step = "waiting"; api.update(S.code, {[`g/ready/${me()}`]: L.shot}); this.paint(g); return; }
+      L.step = "holster"; this.paint(g);
+      let since = 0;
+      const loop = () => {
+        if(L.step !== "holster") return;
+        if(holstered()){ since ||= performance.now(); if(performance.now() - since > 600){ L.step = "waiting"; api.update(S.code, {[`g/ready/${me()}`]: L.shot}); this.paint(R.g); return; } }
+        else since = 0;
+        L.raf = requestAnimationFrame(loop);
+      };
+      loop();
+    };
+  },
+  screen(cls, html){ this.root.innerHTML = ""; this.root.append(el(`<div><div class="status">Quick Draw</div><div class="draw-screen ${cls}">${html}</div></div>`)); },
+  standoff(delay){
+    const L = this.L, shot = L.shot; L.step = "standoff";
+    this.screen("dark", `<p>…</p>`);
+    L.stopWind = startWind();
+    const send = (x) => { api.update(S.code, {[`g/res/${me()}`]: Object.assign({shot}, x)}); };
+    const foul = () => { if(L.step !== "standoff") return; L.step = "done"; this.clear(); send({foul: 1}); this.screen("foul", `<h2>Too soon</h2><p>You drew before the bell.</p>`); };
+    const fire = () => { if(L.step !== "fire") return; L.step = "done"; const rt = Math.round(performance.now() - L.t0); this.clear(); gunshot(); send({rt}); this.screen("bang", `<h2>Bang</h2><p>${(rt / 1000).toFixed(3)}s</p><p class="muted">Waiting for the other gun…</p>`); };
+    if(motionMode === "tap"){ window.onpointerdown = () => L.step === "standoff" ? foul() : fire(); }
+    const watch = () => {
+      if(L.step === "standoff" && motionMode !== "tap" && drawn()) return foul();
+      if(L.step === "fire" && motionMode !== "tap" && drawn()) return fire();
+      if(L.step === "standoff" || L.step === "fire") L.raf = requestAnimationFrame(watch);
+    };
+    watch();
+    L.timers.push(setTimeout(() => {
+      if(L.step !== "standoff") return;
+      if(L.stopWind){ L.stopWind(.05); L.stopWind = null; }
+      bell(); L.t0 = performance.now(); L.step = "fire"; this.screen("bang", `<h2>DRAW</h2>`);
+      L.timers.push(setTimeout(() => { if(L.step === "fire"){ L.step = "done"; this.clear(); send({rt: 3000}); this.screen("", `<h2>Asleep?</h2><p>Waiting for the other gun…</p>`); } }, 3000));
+    }, delay));
+  }
+};
+
+/* ---- Vanishing Tic-Tac-Toe ---- */
+const LINES = [[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]];
+GAMES.ttt = {
+  title: "Vanishing Tic-Tac-Toe", short: "Only 3 marks each",
+  blurb: "You can only have 3 marks on the board. Place a 4th and your oldest vanishes. There's no warning which one goes, so keep track.",
+  init: (first) => ({turn: first}),
+  mount(root){ this.root = root; },
+  update(g){
+    const p = me(), m1 = arr(g.marks?.p1), m2 = arr(g.marks?.p2), mine = g.turn === p;
+    this.root.innerHTML = "";
+    const wrap = el(`<div><div class="status ${mine ? "mine" : ""}">${mine ? "Your move" : esc(nm(opp(p))) + "'s move"}</div><div class="grid ttt"></div>
+      <p class="center" style="color:var(--paper);margin-top:14px">You're <b class="${p === "p1" ? "c1" : "c2"}">${p === "p1" ? "X" : "O"}</b></p></div>`);
+    const grid = wrap.querySelector(".grid");
+    for(let i = 0; i < 9; i++){
+      const own = m1.includes(i) ? "p1" : m2.includes(i) ? "p2" : null;
+      const b = el(`<button class="cell ${own ? "mark-" + own : ""}" aria-label="Square ${i + 1}">${own === "p1" ? "X" : own === "p2" ? "O" : ""}</button>`);
+      b.disabled = !mine || !!own;
+      b.onclick = () => { tick(660); txg((gs, cur) => {
+        if(gs.turn !== p) return false;
+        gs.marks ||= {}; const a = arr(gs.marks.p1), c = arr(gs.marks.p2);
+        if(a.includes(i) || c.includes(i)) return false;
+        const mineArr = p === "p1" ? a : c; mineArr.push(i); if(mineArr.length > 3) mineArr.shift();
+        gs.marks.p1 = a; gs.marks.p2 = c;
+        if(LINES.some(l => l.every(x => mineArr.includes(x)))){ endIn(cur, p, `${nm(p)} got three in a row`); return; }
+        gs.turn = opp(p);
+      }); };
+      grid.append(b);
+    }
+    this.root.append(wrap);
+  }
+};
+
+/* ---- Tap Race ---- */
+const RACE_TARGET = 60;
+GAMES.race = {
+  title: "Tap Race", short: "Tap fastest to the line",
+  blurb: "Tap as fast as you can. Every tap pushes your cube toward the finish line. Any fingers, any taps.",
+  init: () => ({}),
+  mount(root){ this.root = root; this.n = 0; this.live = false; this.sent = 0; this.done = false; this.built = false; this.cd = null; },
+  unmount(){ clearInterval(this.flush); clearInterval(this.cd); },
+  update(g){
+    const p = me();
+    if(!g.at){ txg(gs => { if(gs.at) return false; gs.at = api.now() + 3500; }); }
+    if(!this.built) this.build();
+    if(g.at && !this.cd && !this.live){
+      this.cd = setInterval(() => {
+        const left = g.at - api.now();
+        if(left <= 0){ clearInterval(this.cd); this.live = true; this.big.textContent = "GO"; tick(1320, .15); this.pad.classList.remove("off"); this.pad.textContent = "TAP"; return; }
+        const s = Math.ceil(left / 1000); if(this.big.textContent !== String(s)){ this.big.textContent = s; tick(); }
+      }, 50);
+    }
+    const ot = g.taps?.[opp(p)] || 0;
+    this.setCube(opp(p), ot);
+  },
+  setCube(who, n){ const lane = this.lanes[who]; const w = lane.clientWidth - 70; lane.querySelector(".cube").style.left = (8 + Math.min(1, n / RACE_TARGET) * w) + "px"; },
+  build(){
+    this.built = true; const p = me();
+    const wrap = el(`<div><div class="big-count">3</div>
+      ${["p1","p2"].map(x => `<div class="lane" data-l="${x}"><div class="finish"></div><div class="who">${esc(nm(x))}${x === p ? " (you)" : ""}</div><div class="cube" style="background:var(${x === "p1" ? "--sun" : "--pink"})"></div></div>`).join("")}
+      <div class="pad off">Wait…</div></div>`);
+    this.root.innerHTML = ""; this.root.append(wrap);
+    this.big = wrap.querySelector(".big-count"); this.pad = wrap.querySelector(".pad");
+    this.lanes = {p1: wrap.querySelector("[data-l=p1]"), p2: wrap.querySelector("[data-l=p2]")};
+    this.pad.addEventListener("pointerdown", e => {
+      e.preventDefault(); if(!this.live || this.done) return;
+      this.n++; this.setCube(p, this.n); this.pad.classList.add("hit"); setTimeout(() => this.pad.classList.remove("hit"), 50);
+      if(this.n >= RACE_TARGET){ this.done = true; this.push(); txg((gs, cur) => { endIn(cur, p, `${nm(p)} crossed the line first`); }); }
+    });
+    this.flush = setInterval(() => this.push(), 350);
+  },
+  push(){ if(this.n !== this.sent){ this.sent = this.n; api.update(S.code, {[`g/taps/${me()}`]: this.n}); } }
+};
+
+/* ---- Pig ---- */
+const PIG_GOAL = 30;
+const PIPS = {1:[4],2:[0,8],3:[0,4,8],4:[0,2,6,8],5:[0,2,4,6,8],6:[0,2,3,5,6,8]};
+GAMES.pig = {
+  title: "Pig", short: "Push your luck to 30",
+  blurb: `Roll to build your pot. Hold to bank it. Roll a 1 and the pot is gone and your turn ends. First to ${PIG_GOAL} wins.`,
+  init: (first) => ({turn: first, pot: 0, scores: {p1: 0, p2: 0}}),
+  mount(root){ this.root = root; this.lastRoll = null; },
+  update(g){
+    const p = me(), mine = g.turn === p, sc = g.scores || {}, last = g.last;
+    const v = last?.v || 0, bust = last?.v === 1;
+    this.root.innerHTML = "";
+    const wrap = el(`<div><div class="status ${mine ? "mine" : ""}">${mine ? "Your turn" : esc(nm(opp(p))) + "'s turn"}</div>
+      <div class="card">
+        <div class="die ${bust ? "bust" : ""}">${[...Array(9)].map((_, i) => `<i class="${v && PIPS[v].includes(i) ? "on" : ""}"></i>`).join("")}</div>
+        <div class="pot">${bust ? "Busted" : "Pot: " + (g.pot || 0)}</div>
+        ${["p1","p2"].map(x => `<div class="pigrow"><span><span class="dot ${x}"></span>${esc(nm(x))}</span><div class="meter"><i style="width:${Math.min(100, (sc[x] || 0) / PIG_GOAL * 100)}%;background:var(${x === "p1" ? "--sun" : "--pink"})"></i></div><span>${sc[x] || 0}</span></div>`).join("")}
+        <div class="row2"><button class="btn" data-a="roll">Roll</button><button class="btn alt" data-a="hold">Hold</button></div>
+      </div></div>`);
+    const die = wrap.querySelector(".die");
+    if(last && last.id !== this.lastRoll){ this.lastRoll = last.id; die.classList.add("roll"); tick(bust ? 220 : 520, .12); }
+    const roll = wrap.querySelector("[data-a=roll]"), hold = wrap.querySelector("[data-a=hold]");
+    roll.disabled = !mine; hold.disabled = !mine || !(g.pot > 0);
+    roll.onclick = () => txg(gs => {
+      if(gs.turn !== p) return false;
+      const r = 1 + rnd(6); gs.last = {v: r, by: p, id: Math.random().toString(36).slice(2)};
+      if(r === 1){ gs.pot = 0; gs.turn = opp(p); } else gs.pot = (gs.pot || 0) + r;
+    });
+    hold.onclick = () => txg((gs, cur) => {
+      if(gs.turn !== p || !(gs.pot > 0)) return false;
+      gs.scores ||= {}; gs.scores[p] = (gs.scores[p] || 0) + gs.pot; gs.pot = 0;
+      if(gs.scores[p] >= PIG_GOAL){ endIn(cur, p, `${nm(p)} banked ${gs.scores[p]}`); return; }
+      gs.turn = opp(p); delete gs.last;
+    });
+    this.root.append(wrap);
+  }
+};
+
+/* ---- Flash Grid ---- */
+const FLASH_N = 5;
+const flashPattern = (level) => { const k = Math.min(12, level + 2), s = new Set(); while(s.size < k) s.add(rnd(FLASH_N * FLASH_N)); return [...s]; };
+GAMES.flash = {
+  title: "Flash Grid", short: "Memorize the lit squares",
+  blurb: "Squares light up for a moment. Tap them all back from memory. Same pattern for both of you, more squares each round. First to miss loses.",
+  init: () => ({level: 1, seq: 1, pat: flashPattern(1)}),
+  mount(root){ this.root = root; this.seq = 0; this.timers = []; },
+  unmount(){ this.timers.forEach(clearTimeout); },
+  update(g){
+    const p = me(), res = g.res || {};
+    if(this.seq !== g.seq){ this.seq = g.seq; this.timers.forEach(clearTimeout); this.timers = []; this.run(g); }
+    if(res.p1?.seq === g.seq && res.p2?.seq === g.seq){
+      txg((gs, cur) => {
+        const r = gs.res || {}; if(r.p1?.seq !== gs.seq || r.p2?.seq !== gs.seq) return false;
+        if(r.p1.ok !== r.p2.ok){ const w = r.p1.ok ? "p1" : "p2"; endIn(cur, w, `${nm(w)} survived round ${gs.level}`); return; }
+        if(r.p1.ok) gs.level++;
+        gs.seq++; gs.pat = flashPattern(gs.level); delete gs.res;
+      });
+    }
+  },
+  run(g){
+    const pat = arr(g.pat), seq = g.seq, level = g.level;
+    const wrap = el(`<div><div class="status">Round ${level}</div><div class="grid" style="grid-template-columns:repeat(${FLASH_N},1fr);max-width:400px"></div><p class="center" style="color:var(--paper)" data-m>Get ready…</p></div>`);
+    const grid = wrap.querySelector(".grid"), msg = wrap.querySelector("[data-m]"), cells = [];
+    for(let i = 0; i < FLASH_N * FLASH_N; i++){ const b = el(`<button class="cell" disabled></button>`); cells.push(b); grid.append(b); }
+    this.root.innerHTML = ""; this.root.append(wrap);
+    const found = new Set(); let over = false;
+    const send = (ok) => { over = true; api.update(S.code, {[`g/res/${me()}`]: {seq, ok: ok ? 1 : 0}}); };
+    this.timers.push(setTimeout(() => {
+      msg.textContent = "Memorize"; pat.forEach(i => cells[i].style.background = "var(--sun)"); tick(990);
+      this.timers.push(setTimeout(() => {
+        pat.forEach(i => cells[i].style.background = ""); msg.textContent = `Tap all ${pat.length}`;
+        cells.forEach((b, i) => { b.disabled = false; b.onclick = () => {
+          if(over || found.has(i)) return;
+          if(pat.includes(i)){ found.add(i); b.style.background = "var(--good)"; tick(700 + found.size * 40);
+            if(found.size === pat.length){ msg.textContent = "Got them. Waiting…"; send(true); } }
+          else { b.style.background = "var(--bad)"; pat.forEach(j => { if(!found.has(j)) cells[j].style.outline = "3px dashed var(--sun)"; }); msg.textContent = "Missed. Waiting…"; tick(160, .3); send(false); }
+        }; });
+      }, 900 + pat.length * 300));
+    }, 1200));
+  }
+};
+
+/* ---- Stop the Clock ---- */
+GAMES.clock = {
+  title: "Stop the Clock", short: "Stop it at exactly 5.00",
+  blurb: "A clock starts counting, then disappears. Stop it as close to 5.00 seconds as you can. Closest wins.",
+  init: () => ({round: 1}),
+  mount(root){ this.root = root; this.round = 0; this.raf = 0; this.timers = []; },
+  unmount(){ cancelAnimationFrame(this.raf); this.timers.forEach(clearTimeout); },
+  update(g){
+    const res = g.res || {};
+    if(this.round !== g.round){ this.round = g.round; this.run(g.round); }
+    if(res.p1?.round === g.round && res.p2?.round === g.round){
+      txg((gs, cur) => {
+        const r = gs.res || {}; if(r.p1?.round !== gs.round || r.p2?.round !== gs.round) return false;
+        const d1 = Math.abs(r.p1.t - 5000), d2 = Math.abs(r.p2.t - 5000);
+        if(d1 === d2){ gs.round++; delete gs.res; return; }
+        const w = d1 < d2 ? "p1" : "p2";
+        endIn(cur, w, `${nm("p1")} ${(r.p1.t / 1000).toFixed(2)}s, ${nm("p2")} ${(r.p2.t / 1000).toFixed(2)}s`);
+      });
+    }
+  },
+  run(round){
+    cancelAnimationFrame(this.raf); this.timers.forEach(clearTimeout); this.timers = [];
+    const wrap = el(`<div><div class="status">${round > 1 ? "Exact tie. Again." : "Stop at 5.00"}</div><div class="clock">3</div><button class="btn stop" disabled>STOP</button><p class="center" style="color:var(--paper)" data-m></p></div>`);
+    this.root.innerHTML = ""; this.root.append(wrap);
+    const clock = wrap.querySelector(".clock"), stop = wrap.querySelector(".stop"), msg = wrap.querySelector("[data-m]");
+    let t0 = 0, stopped = false;
+    [3, 2, 1].forEach((n, i) => this.timers.push(setTimeout(() => { clock.textContent = n; tick(); }, i * 800)));
+    this.timers.push(setTimeout(() => {
+      tick(1320, .15); t0 = performance.now(); stop.disabled = false;
+      const loop = () => { if(stopped) return; const e = performance.now() - t0; clock.textContent = e < 1500 ? (e / 1000).toFixed(2) : "?.??"; this.raf = requestAnimationFrame(loop); };
+      loop();
+    }, 2400));
+    stop.onpointerdown = (e) => {
+      e.preventDefault(); if(stopped || !t0) return; stopped = true;
+      const t = Math.round(performance.now() - t0); cancelAnimationFrame(this.raf);
+      clock.textContent = (t / 1000).toFixed(2); stop.disabled = true; msg.textContent = "Locked in. Waiting…"; tick(440, .2);
+      api.update(S.code, {[`g/res/${me()}`]: {round, t}});
+    };
+  }
+};
+
+/* ---- shared grid hide/seek ---- */
+function boardEl(n, cellFn, cls = "", max = 420){
+  const g = el(`<div class="grid ${cls}" style="grid-template-columns:repeat(${n},1fr);max-width:${max}px;gap:${n > 6 ? 4 : 6}px"></div>`);
+  for(let i = 0; i < n * n; i++) g.append(cellFn(i));
+  return g;
+}
+const CHEST_SVG = `<svg viewBox="0 0 24 24" width="70%" height="70%" aria-label="Treasure chest"><path d="M3 10a5 5 0 0 1 5-5h8a5 5 0 0 1 5 5v1H3z" fill="#8B4A1C" stroke="#161A4A" stroke-width="1.5"/><rect x="3" y="11" width="18" height="9" rx="1.5" fill="#A85A24" stroke="#161A4A" stroke-width="1.5"/><rect x="10" y="9" width="4" height="5" rx="1" fill="#FFC93C" stroke="#161A4A" stroke-width="1.2"/><path d="M3 11h18" stroke="#FFC93C" stroke-width="1.5"/></svg>`;
+
+function hidePhase(root, n, title, prompt, g, iconHtml){
+  const p = me(), spot = g.spot || {};
+  if(spot[p] == null){
+    root.innerHTML = "";
+    const wrap = el(`<div><div class="status mine">${title}</div><p class="center" style="color:var(--paper)">${prompt}</p></div>`);
+    wrap.append(boardEl(n, i => { const b = el(`<button class="cell ${n > 6 ? "sm" : ""}" aria-label="Square ${i + 1}"></button>`); b.onclick = () => { tick(); api.update(S.code, {[`g/spot/${p}`]: i}); }; return b; }));
+    root.append(wrap); return true;
+  }
+  if(spot[opp(p)] == null){
+    root.innerHTML = "";
+    const wrap = el(`<div><div class="status">Hidden</div><p class="center" style="color:var(--paper)">Waiting for ${esc(nm(opp(p)))} to hide.</p></div>`);
+    wrap.append(boardEl(n, i => el(`<button class="cell ${n > 6 ? "sm" : ""}" disabled>${i === spot[p] ? iconHtml : ""}</button>`)));
+    root.append(wrap); return true;
+  }
+  return false;
+}
+
+/* ---- Hide and Seek ---- */
+const HS_N = 6;
+GAMES.hide = {
+  title: "Hide and Seek", short: "3 guesses, hot or cold",
+  blurb: "Hide on the grid, then take turns guessing where your opponent is. Each miss tells you hot, warm, or cold. 3 guesses each. Nobody found? The closest guess wins.",
+  init: (first) => ({turn: first, max: 3}),
+  mount(root){ this.root = root; },
+  update(g){
+    const p = me(), o = opp(p);
+    if(hidePhase(this.root, HS_N, "Hide", "Tap a square to hide there.", g, "🙈")) return;
+    const spot = g.spot, mineG = arr(g.guesses?.[p]), theirG = arr(g.guesses?.[o]), max = g.max || 3, mine = g.turn === p;
+    const hint = (i, target) => { const d = cheb(i, target, HS_N); return d === 1 ? ["h-hot", "Hot"] : d === 2 ? ["h-warm", "Warm"] : ["h-cold", "Cold"]; };
+    this.root.innerHTML = "";
+    const wrap = el(`<div><div class="status ${mine ? "mine" : ""}">${mine ? "Your guess" : esc(nm(o)) + " is guessing"}</div>
+      <p class="center" style="color:var(--paper);margin-top:-6px">Guesses left: you ${max - mineG.length}, ${esc(nm(o))} ${max - theirG.length}${max > 3 ? " (overtime)" : ""}</p></div>`);
+    wrap.append(boardEl(HS_N, i => {
+      const used = mineG.includes(i); const [c, t] = used ? hint(i, spot[o]) : ["", ""];
+      const b = el(`<button class="cell ${c}" aria-label="Square ${i + 1}">${used ? `<span class="hint">${t}</span>` : ""}</button>`);
+      b.disabled = !mine || used || mineG.length >= max;
+      b.onclick = () => { tick(); txg((gs, cur) => {
+        if(gs.turn !== p) return false; gs.guesses ||= {};
+        const mg = arr(gs.guesses[p]), tg = arr(gs.guesses[o]), mx = gs.max || 3;
+        if(mg.includes(i) || mg.length >= mx) return false;
+        mg.push(i); gs.guesses[p] = mg;
+        if(i === gs.spot[o]){ endIn(cur, p, `${nm(p)} found ${nm(o)} in ${mg.length} ${mg.length === 1 ? "guess" : "guesses"}`); return; }
+        if(mg.length >= mx && tg.length >= mx){
+          const best = (gl, t) => Math.min(...gl.map(x => cheb(x, t, HS_N)));
+          const bm = best(mg, gs.spot[o]), bt = best(tg, gs.spot[p]);
+          if(bm !== bt){ const w = bm < bt ? p : o; endIn(cur, w, `Nobody found anyone. ${nm(w)} got closest.`); return; }
+          gs.max = mx + 1;
+        }
+        gs.turn = o;
+      }); };
+      return b;
+    }));
+    const mini = el(`<div class="mini-wrap"><h3>Your hiding spot</h3></div>`);
+    mini.append(boardEl(HS_N, i => el(`<div class="cell sm ${theirG.includes(i) ? "picked" : ""}">${i === spot[p] ? "🙈" : theirG.includes(i) ? "×" : ""}</div>`), "mini", 200));
+    wrap.append(mini);
+    this.root.append(wrap);
+  }
+};
+
+/* ---- Treasure Hunt ---- */
+const CH_N = 7;
+const HEAT = ["", "#C0141E", "#E5512A", "#F28C28", "#F9C22E", "#FFE066", "#FFF3B0"]; // index = distance
+GAMES.chest = {
+  title: "Treasure Hunt", short: "Find their chest by color",
+  blurb: "Hide your chest on the 7×7 grid. Take turns tapping your opponent's grid. Each square turns from pale yellow to deep red the closer it is. First to find the other chest wins.",
+  init: (first) => ({turn: first}),
+  mount(root){ this.root = root; },
+  update(g){
+    const p = me(), o = opp(p);
+    if(hidePhase(this.root, CH_N, "Bury your chest", "Tap a square to hide your chest.", g, CHEST_SVG)) return;
+    const spot = g.spot, mineT = arr(g.taps?.[p]), theirT = arr(g.taps?.[o]), mine = g.turn === p;
+    this.root.innerHTML = "";
+    const wrap = el(`<div><div class="status ${mine ? "mine" : ""}">${mine ? "Your dig" : esc(nm(o)) + " is digging"}</div></div>`);
+    wrap.append(boardEl(CH_N, i => {
+      const used = mineT.includes(i), d = used ? cheb(i, spot[o], CH_N) : 0;
+      const b = el(`<button class="cell sm" aria-label="Square ${i + 1}" style="${used && d ? `background:${HEAT[d]}` : ""}">${used && d === 0 ? CHEST_SVG : ""}</button>`);
+      b.disabled = !mine || used;
+      b.onclick = () => { tick(); txg((gs, cur) => {
+        if(gs.turn !== p) return false; gs.taps ||= {};
+        const mt = arr(gs.taps[p]); if(mt.includes(i)) return false;
+        mt.push(i); gs.taps[p] = mt;
+        if(i === gs.spot[o]){ endIn(cur, p, `${nm(p)} found the chest in ${mt.length} digs`); return; }
+        gs.turn = o;
+      }); };
+      return b;
+    }));
+    wrap.append(el(`<div class="legend"><span>Far</span><div class="bar"></div><span>Close</span></div>`));
+    const mini = el(`<div class="mini-wrap"><h3>Your chest</h3></div>`);
+    mini.append(boardEl(CH_N, i => { const t = theirT.includes(i), d = cheb(i, spot[p], CH_N);
+      return el(`<div class="cell sm" style="${t && d ? `background:${HEAT[d]}` : ""}">${i === spot[p] ? CHEST_SVG : ""}</div>`); }, "mini", 200));
+    wrap.append(mini);
+    this.root.append(wrap);
+  }
+};
+
+const GAME_IDS = Object.keys(GAMES);
+
+/* ---------------- screens ---------------- */
+let mounted = {key: null, game: null};
+function unmountGame(){ if(mounted.game?.unmount) mounted.game.unmount(); mounted = {key: null, game: null}; }
+
+function scoreboard(){
+  const sc = R.score || {};
+  return `<div class="score"><div class="pl c1">${esc(nm("p1"))}${me() === "p1" ? " (you)" : ""}</div>
+    <div class="nums"><b class="c1">${sc.p1 || 0}</b><span class="vs">best of ${R.bestOf}</span><b class="c2">${sc.p2 || 0}</b></div>
+    <div class="pl r c2">${esc(nm("p2"))}${me() === "p2" ? " (you)" : ""}</div></div>`;
+}
+
+function homeScreen(err = ""){
+  unmountGame();
+  let bestOf = 3;
+  app.innerHTML = "";
+  const w = el(`<div>
+    ${LOCAL ? `<div class="banner">Local test mode: open this page in a second tab to play against yourself.</div>` : ""}
+    <div class="logo">Grudge<span>Match</span></div>
+    <p class="tag">Eight mini games. Winner picks the next one.</p>
+    <div class="card"><label for="nm">Your name</label><input id="nm" maxlength="14" autocomplete="off" value="${esc(localStorage.getItem("grudge_name") || "")}"></div>
+    <div class="card"><h2>Start a match</h2><div class="seg" role="group"><button aria-pressed="true" data-b="3">Best of 3</button><button aria-pressed="false" data-b="5">Best of 5</button></div>
+      <button class="btn" data-a="create">Create match</button></div>
+    <div class="card"><h2>Join a match</h2><label for="cd">Match code</label><input id="cd" maxlength="4" autocomplete="off" style="text-transform:uppercase;letter-spacing:.2em" value="${esc(INVITE)}">
+      <button class="btn alt" data-a="join">Join match</button><div class="err">${esc(err)}</div></div></div>`);
+  app.append(w);
+  const name = () => { const v = w.querySelector("#nm").value.trim(); if(v) localStorage.setItem("grudge_name", v); return v; };
+  const errEl = w.querySelector(".err");
+  w.querySelectorAll("[data-b]").forEach(b => b.onclick = () => { bestOf = +b.dataset.b; w.querySelectorAll("[data-b]").forEach(x => x.setAttribute("aria-pressed", x === b)); });
+  w.querySelector("[data-a=create]").onclick = async () => {
+    const n = name(); if(!n){ errEl.textContent = "Enter your name first."; return; }
+    audio();
+    const L = "ABCDEFGHJKMNPQRSTUVWXYZ"; let code;
+    for(let i = 0; i < 10; i++){ code = [...Array(4)].map(() => L[rnd(L.length)]).join(""); if(!isClean(code)) { i--; continue; } if(!(await api.get(code))) break; }
+    try{ await api.update(code, {created: Date.now(), bestOf, phase: "lobby", "players/p1": {name: n}, score: {p1: 0, p2: 0}}); }
+    catch{ errEl.textContent = "Couldn't create the match. Check the Firestore rules."; return; }
+    S = {code, pid: "p1", name: n}; saveS(); connect();
+  };
+  w.querySelector("[data-a=join]").onclick = async () => {
+    const n = name(), code = w.querySelector("#cd").value.trim().toUpperCase();
+    if(!n){ errEl.textContent = "Enter your name first."; return; }
+    if(code.length !== 4){ errEl.textContent = "Match codes are 4 letters."; return; }
+    audio();
+    let room; try{ room = await api.get(code); }catch{ errEl.textContent = "Couldn't connect. Try again."; return; }
+    if(!room){ errEl.textContent = `No match with code ${code}.`; return; }
+    if(room.players?.p2){ errEl.textContent = "That match already has two players."; return; }
+    await api.update(code, {"players/p2": {name: n}});
+    S = {code, pid: "p2", name: n}; saveS(); connect();
+  };
+}
+
+function leave(){ if(unsub) unsub(); unsub = null; S = null; STORE.removeItem("grudge_s"); R = null; homeScreen(); }
+
+function connect(){
+  if(unsub) unsub();
+  unsub = api.listen(S.code, v => { if(!v){ leave(); return; } R = v; render(); });
+}
+
+function lobby(){
+  unmountGame();
+  app.innerHTML = "";
+  const both = !!R.players?.p2;
+  const w = el(`<div>${scoreboard()}<div class="card center"><h2>Match code</h2><div class="code">${S.code}</div>
+    <p>${both ? `${esc(nm("p2"))} is here.` : "Send this code to your opponent."}</p>
+    ${both ? "" : `<button class="btn alt" data-a="invite">Send invite link</button>`}
+    ${me() === "p1" ? `<button class="btn" data-a="go" ${both ? "" : "disabled"}>Start match</button>` : `<p class="muted">Waiting for ${esc(nm("p1"))} to start.</p>`}
+    <button class="btn ghost" data-a="leave">Leave</button></div></div>`);
+  app.append(w);
+  const go = w.querySelector("[data-a=go]");
+  if(go) go.onclick = () => api.tx(S.code, cur => { if(cur.phase !== "lobby" || !cur.players?.p2) return false; startGame(cur, GAME_IDS[rnd(GAME_IDS.length)], rnd(2) ? "p1" : "p2"); });
+  w.querySelector("[data-a=leave]").onclick = leave;
+  const inv = w.querySelector("[data-a=invite]");
+  if(inv) inv.onclick = () => { const url = location.origin + location.pathname + "?g=" + S.code;
+    if(navigator.share) navigator.share({title: "Grudge Match", text: "Join my match: " + S.code, url}).catch(() => {});
+    else navigator.clipboard?.writeText(url).then(() => inv.textContent = "Link copied", () => inv.textContent = url); };
+}
+
+function playing(){
+  const g = R.g || {}, G = GAMES[R.current], rdy = g.rdy || {}, p = me();
+  const bothReady = rdy.p1 && rdy.p2;
+  const key = (bothReady ? "game" : "intro") + R.gameNum;
+  if(mounted.key !== key){
+    unmountGame(); mounted.key = key;
+    app.innerHTML = "";
+    app.append(el(`<div>${scoreboard()}<div id="stage"></div></div>`));
+    if(bothReady){ mounted.game = G; G.mount(document.getElementById("stage")); }
+  } else app.querySelector(".score").outerHTML = scoreboard();
+  const stage = document.getElementById("stage");
+  if(!bothReady){
+    const turnBased = ["ttt", "pig", "hide", "chest"].includes(R.current);
+    stage.innerHTML = "";
+    const c = el(`<div><div class="status">Game ${R.gameNum}</div><div class="card"><h2>${G.title}</h2><p>${G.blurb}</p>
+      ${turnBased ? `<p><b>${g.first === p ? "You go" : esc(nm(g.first)) + " goes"} first.</b></p>` : ""}
+      ${rdy[p] ? `<p class="muted">Waiting for ${esc(nm(opp(p)))}…</p>` : `<button class="btn">I'm ready</button>`}</div></div>`);
+    const b = c.querySelector("button");
+    if(b) b.onclick = () => { audio(); if(R.current === "draw") requestMotion(); api.update(S.code, {[`g/rdy/${p}`]: true}); };
+    stage.append(c);
+    return;
+  }
+  G.update(g);
+}
+
+function result(){
+  unmountGame();
+  const r = R.result, p = me(), won = r.winner === p, used = arr(R.used);
+  app.innerHTML = "";
+  const w = el(`<div>${scoreboard()}
+    <p class="verdict">${won ? "You won" : esc(nm(r.winner)) + " won"} ${esc(GAMES[r.game].title)}</p>
+    <div class="slam ${won ? "" : "lose"}">${esc(msgFor("g" + r.n, won))}</div>
+    <p class="detail">${esc(r.detail)}</p>
+    ${won ? `<div class="status mine" style="text-align:left">Pick the next game</div><div class="picks"></div>` : `<div class="card center"><p><b>${esc(nm(r.winner))} is picking the next game.</b></p></div>`}</div>`);
+  if(won){
+    const picks = w.querySelector(".picks");
+    GAME_IDS.forEach(id => {
+      const b = el(`<button class="pick">${esc(GAMES[id].title)}<small>${used.includes(id) ? "Already played" : esc(GAMES[id].short)}</small></button>`);
+      b.disabled = used.includes(id);
+      b.onclick = () => api.tx(S.code, cur => { if(cur.phase !== "result" || arr(cur.used).includes(id)) return false; startGame(cur, id, cur.lastLoser); });
+      picks.append(b);
+    });
+  }
+  app.append(w);
+}
+
+function over(){
+  unmountGame();
+  const r = R.result, p = me(), won = r.winner === p, rm = R.rematch || {};
+  app.innerHTML = "";
+  const w = el(`<div>${scoreboard()}
+    <p class="verdict">${won ? "You won the match" : esc(nm(r.winner)) + " won the match"}</p>
+    <div class="slam ${won ? "" : "lose"}">${esc(msgFor("o" + r.n, won))}</div>
+    <p class="detail">${esc(GAMES[r.game].title)}: ${esc(r.detail)}</p>
+    <div class="card center">${rm[p] ? `<p><b>Waiting for ${esc(nm(opp(p)))} to accept the rematch.</b></p>` : `<p>${rm[opp(p)] ? `<b>${esc(nm(opp(p)))} wants a rematch.</b>` : "Again?"}</p><button class="btn">Rematch</button>`}
+    <button class="btn ghost" data-a="leave">Leave</button></div></div>`);
+  const b = w.querySelector(".btn:not(.ghost)");
+  if(b) b.onclick = () => api.tx(S.code, cur => {
+    cur.rematch ||= {}; cur.rematch[p] = true;
+    if(cur.rematch.p1 && cur.rematch.p2){ delete cur.rematch; cur.score = {p1: 0, p2: 0}; delete cur.used; delete cur.lastLoser; startGame(cur, GAME_IDS[rnd(GAME_IDS.length)], rnd(2) ? "p1" : "p2"); }
+  });
+  w.querySelector("[data-a=leave]").onclick = leave;
+  app.append(w);
+}
+
+function render(){
+  if(!S || !R) return;
+  if(!R.players?.[S.pid]){ leave(); return; }
+  ({lobby, playing, result, over})[R.phase]?.();
+}
+
+if(S) connect(); else homeScreen();
+if(INVITE) history.replaceState(null, "", location.pathname + (LOCAL ? "?local" : ""));
+</script>
+</body>
+</html>
