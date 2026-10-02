@@ -44,6 +44,17 @@ input:focus-visible,button:focus-visible{outline:3px solid var(--pink);outline-o
 .seg{display:flex;gap:8px}
 .seg button{flex:1;font:800 18px var(--body);padding:10px;border:3px solid var(--ink);border-radius:12px;background:#fff;color:var(--ink);cursor:pointer}
 .seg button[aria-pressed="true"]{background:var(--ink);color:var(--paper)}
+.gear{float:right;margin-top:14px;width:48px;height:48px;font-size:26px;border:3px solid var(--ink);border-radius:14px;background:var(--paper);box-shadow:3px 3px 0 var(--ink);cursor:pointer;color:var(--ink)}
+.cv{display:block;width:100%;border:3px solid var(--ink);border-radius:18px;background:#9ED8F5;touch-action:none}
+.hud{display:flex;justify-content:space-between;color:var(--paper);font-weight:800;margin:0 2px 8px}
+.shells{position:relative;height:190px;background:linear-gradient(#F4D58D,#E8BF6A);border:3px solid var(--ink);border-radius:18px;overflow:hidden;touch-action:none}
+.shell{position:absolute;bottom:34px;width:30%;height:110px;transition:left .25s ease,transform .15s;touch-action:none}
+.shell.drag{transition:none;transform:translateY(-14px) scale(1.06);z-index:2}
+.shell svg{width:100%;height:100%}
+.ball{position:absolute;bottom:22px;width:34px;height:34px;border-radius:50%;background:var(--bad);border:3px solid var(--ink);transition:left .25s ease}
+.rps{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.rps button{font-size:52px;aspect-ratio:1;border:3px solid var(--ink);border-radius:18px;background:var(--paper);box-shadow:4px 4px 0 var(--ink);cursor:pointer}
+.rps button[aria-pressed="true"]{background:var(--sun);transform:translate(2px,2px);box-shadow:2px 2px 0 var(--ink)}
 .err{color:var(--bad);font-weight:800;min-height:1.4em;margin-top:8px}
 .banner{background:var(--sun);border:3px solid var(--ink);border-radius:12px;padding:8px 12px;font-size:14px;margin-bottom:14px}
 .code{font-family:var(--display);font-size:64px;letter-spacing:.08em;text-align:center;margin:8px 0}
@@ -165,12 +176,13 @@ const WIN_MSGS = [
   "Okay, so you won. Do you want a cookie?",
   "Wow, you're so amazing 🙄",
   "Congrats. I'll alert the media.",
-  "You won. Try not to let it go to your head. Too late.",
-  "Your trophy is in the mail. There is no mail.",
+  "You could be an Olympic medalist, I'm not kidding",
+  "Your trophy is in the mail.",
   "Fine. You win. Happy now?",
   "Even a broken clock is right twice a day.",
   "Winner winner, no dinner.",
-  "Statistically, this was bound to happen eventually."
+  "Statistically, this was bound to happen eventually.",
+  "Congrats. You've peaked."
 ];
 const LOSE_MSGS = [
   "You tried your best, so we should have anticipated this outcome",
@@ -181,11 +193,26 @@ const LOSE_MSGS = [
   "Somewhere, a participation trophy weeps for you.",
   "That was certainly an attempt.",
   "Your opponent says thanks for the easy win.",
-  "Bold strategy. Didn't work, but bold."
+  "Bold strategy. Didn't work, but bold.",
+  "Wow, did your mom teach you that?"
 ];
-let winIdx = 0, loseIdx = 0; const msgCache = {};
-function msgFor(key, won){
-  if(!(key in msgCache)) msgCache[key] = won ? WIN_MSGS[winIdx++ % WIN_MSGS.length] : LOSE_MSGS[loseIdx++ % LOSE_MSGS.length];
+const MATCH_WIN_MSGS = [
+  "The crowd goes mild.",
+  "Champion of absolutely nothing. Congrats.",
+  "You beat a friend at phone games. Put it on your resume.",
+  "Undisputed. For now.",
+  "Go call your mom. She'll pretend to care."
+];
+const MATCH_LOSE_MSGS = [
+  "Not just one game. The whole match. Wow.",
+  "Thank you for your participation. It has been noted.",
+  "History won't remember this. You will.",
+  "Your rematch request is pending. So is your dignity.",
+  "You lost to them? Them?"
+];
+const msgIdx = {}, msgCache = {};
+function msgFor(key, list){
+  if(!(key in msgCache)){ const name = list === WIN_MSGS ? "w" : list === LOSE_MSGS ? "l" : list === MATCH_WIN_MSGS ? "mw" : "ml"; msgIdx[name] = msgIdx[name] || 0; msgCache[key] = list[msgIdx[name]++ % list.length]; }
   return msgCache[key];
 }
 
@@ -224,10 +251,11 @@ const api = LOCAL ? (() => {
     async get(c){ return read(c); },
     async update(c, patch){ const v = read(c) || {}; for(const p in patch) setPath(v, p, patch[p]); write(c, v); },
     async tx(c, mut){ const cur = read(c); if(!cur) return false; const v = clone(cur); if(mut(v) === false) return false; write(c, v); return true; },
-    now(){ return Date.now(); }
+    now(){ return Date.now(); },
+    async syncClock(){}
   };
 })() : (() => {
-  let F, fs;
+  let F, fs, offset = 0;
   const ready = (async () => {
     const V = "https://www.gstatic.com/firebasejs/10.12.2/";
     const [A, U, D] = await Promise.all([import(V + "firebase-app.js"), import(V + "firebase-auth.js"), import(V + "firebase-firestore.js")]);
@@ -246,14 +274,38 @@ const api = LOCAL ? (() => {
       const s = await F.getDoc(ref(c)); if(s.exists()) return F.updateDoc(ref(c), p);
       const v = {}; for(const k in patch) setPath(v, k, patch[k]); return F.setDoc(ref(c), prune(v)); },
     async tx(c, mut){ await ready;
-      return F.runTransaction(fs, async t => { const s = await t.get(ref(c)); if(!s.exists()) return false; const v = clone(s.data()); if(mut(v) === false) return false; t.set(ref(c), prune(v) || {}); return true; }); },
-    now(){ return Date.now(); }
+      return F.runTransaction(fs, async t => { const s = await t.get(ref(c)); if(!s.exists()) return false; const v = clone(s.data()); delete v.clk; if(mut(v) === false) return false; t.set(ref(c), prune(v) || {}); return true; }); },
+    async syncClock(c, pid){
+      await ready; const f = "clk." + pid; let best = null;
+      for(let i = 0; i < 3; i++){
+        try{
+          const t0 = Date.now(); await F.updateDoc(ref(c), {[f]: F.serverTimestamp()}); const t1 = Date.now();
+          const s = await F.getDoc(ref(c)); const ts = s.data()?.clk?.[pid];
+          if(ts && ts.toMillis && (!best || t1 - t0 < best.rtt)) best = {rtt: t1 - t0, off: ts.toMillis() - (t0 + t1) / 2};
+        }catch{}
+      }
+      if(best) offset = best.off;
+      try{ await F.updateDoc(ref(c), {[f]: F.deleteField()}); }catch{}
+    },
+    now(){ return Date.now() + offset; }
   };
 })();
 
 /* ---------------- audio ---------------- */
 let AC = null;
-function audio(){ if(!AC) AC = new (window.AudioContext || window.webkitAudioContext)(); if(AC.state === "suspended") AC.resume(); return AC; }
+function audio(){
+  if(!AC){ try{ if(navigator.audioSession) navigator.audioSession.type = "playback"; }catch{} AC = new (window.AudioContext || window.webkitAudioContext)(); }
+  if(AC.state !== "running") AC.resume();
+  return AC;
+}
+let audioUnlocked = false;
+function unlockAudio(){
+  const ac = audio();
+  if(!audioUnlocked){ const b = ac.createBuffer(1, 1, 22050), s = ac.createBufferSource(); s.buffer = b; s.connect(ac.destination); s.start(0); }
+  if(ac.state === "running") audioUnlocked = true;
+}
+["pointerdown", "touchend", "click"].forEach(ev => document.addEventListener(ev, unlockAudio, {capture: true, passive: true}));
+document.addEventListener("visibilitychange", () => { if(!document.hidden && AC) AC.resume(); });
 function noiseBuf(sec){ const ac = audio(), b = ac.createBuffer(1, ac.sampleRate * sec, ac.sampleRate), d = b.getChannelData(0); for(let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1; return b; }
 function startWind(){
   const ac = audio(), t = ac.currentTime, out = ac.createGain();
@@ -289,7 +341,7 @@ function gunshot(){
 function tick(f = 880, d = .07){ try{ const ac = audio(), t = ac.currentTime, o = ac.createOscillator(), g = ac.createGain(); o.frequency.value = f; g.gain.setValueAtTime(.2, t); g.gain.exponentialRampToValueAtTime(.001, t + d); o.connect(g).connect(ac.destination); o.start(t); o.stop(t + d); }catch{} }
 
 /* ---------------- motion ---------------- */
-let motionMode = null, topUp = 0, gotOri = false;
+let motionMode = null, topUp = 0, tiltX = 0, gotOri = false;
 async function requestMotion(){
   if(motionMode) return motionMode;
   try{
@@ -297,7 +349,7 @@ async function requestMotion(){
       const r = await DeviceOrientationEvent.requestPermission(); if(r !== "granted") return motionMode = "tap";
     }
   }catch{ return motionMode = "tap"; }
-  window.addEventListener("deviceorientation", e => { if(e.beta != null){ topUp = Math.sin(e.beta * Math.PI / 180); gotOri = true; } });
+  window.addEventListener("deviceorientation", e => { if(e.beta != null){ topUp = Math.sin(e.beta * Math.PI / 180); tiltX = e.gamma || 0; gotOri = true; } });
   await sleep(700);
   return motionMode = gotOri ? "motion" : "tap";
 }
@@ -721,6 +773,428 @@ GAMES.chest = {
   }
 };
 
+/* ---------------- shared realtime engine ---------------- */
+function mulberry(a){ return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+function realtime(def){
+  return Object.assign({
+    mount(root){ this.root = root; this.round = null; this.raf = 0; },
+    unmount(){ cancelAnimationFrame(this.raf); window.removeEventListener("resize", this.onResize || (() => {})); },
+    update(g){
+      const o = opp(me()), round = g.round || 1;
+      this.g = g;
+      if(this.round !== round){ this.round = round; this.start(g); }
+      if(!g.at) txg(gs => { if(gs.at) return false; gs.at = api.now() + 3500; });
+      const res = g.res || {};
+      if(this.survival && res[o] && !this.sent && this.started) this.finish(Math.max(this.t, res[o].t + 0.001));
+      if(res.p1 && res.p2) txg((gs, cur) => {
+        const a = gs.res?.p1, b = gs.res?.p2; if(!a || !b) return false;
+        const k = this.survival ? "t" : "s";
+        if(a[k] === b[k]){ gs.round = (gs.round || 1) + 1; gs.seed = rnd(1e9); delete gs.res; delete gs.at; delete gs.hits; return; }
+        const w = a[k] > b[k] ? "p1" : "p2"; endIn(cur, w, this.detail(a, b));
+      });
+    },
+    start(g){
+      cancelAnimationFrame(this.raf);
+      this.sent = false; this.started = false; this.t = 0; this.lastHits = 0; this.lastCount = null;
+      this.root.innerHTML = "";
+      const wrap = el(`<div>${(g.round || 1) > 1 ? `<div class="status">Dead even. Again.</div>` : ""}<div class="hud"><span data-h1></span><span data-h2></span></div><canvas class="cv"></canvas></div>`);
+      this.root.append(wrap);
+      this.h1 = wrap.querySelector("[data-h1]"); this.h2 = wrap.querySelector("[data-h2]");
+      const cv = wrap.querySelector("canvas"), ctx = cv.getContext("2d");
+      let W = 0, H = 0;
+      const fit = () => { W = cv.clientWidth; H = Math.round(Math.min(W * this.ratio, innerHeight * 0.72)); cv.style.height = H + "px"; const d = devicePixelRatio || 1; cv.width = W * d; cv.height = H * d; ctx.setTransform(d, 0, 0, d, 0, 0); };
+      fit(); this.onResize = fit; window.addEventListener("resize", fit);
+      const inp = this.inp = {taps: 0, down: false, x: 0.5};
+      const pos = e => { const r = cv.getBoundingClientRect(); inp.x = (e.clientX - r.left) / r.width; };
+      cv.onpointerdown = e => { e.preventDefault(); inp.taps++; inp.down = true; pos(e); try{ cv.setPointerCapture(e.pointerId); }catch{} };
+      cv.onpointermove = e => { if(inp.down) pos(e); };
+      cv.onpointerup = cv.onpointercancel = () => { inp.down = false; };
+      this.st = this.setup(mulberry(g.seed || 1), cfg());
+      let last = null;
+      const loop = (ts) => {
+        this.raf = requestAnimationFrame(loop);
+        const gg = this.g, t = gg.at ? (api.now() - gg.at) / 1000 : -99;
+        if(t >= 0 && !this.sent){
+          this.started = true;
+          const dt = last == null ? 0 : Math.min(0.05, (ts - last) / 1000);
+          this.step(this.st, dt, t, inp); this.t = t; inp.taps = 0;
+          if((this.st.hits || 0) !== this.lastHits){ this.lastHits = this.st.hits; api.update(S.code, {[`g/hits/${me()}`]: this.st.hits}); }
+          if(this.st.dead || (this.duration && t >= this.duration)) this.finish(this.duration ? Math.min(t, this.duration) : t);
+        } else inp.taps = 0;
+        last = ts;
+        ctx.clearRect(0, 0, W, H);
+        this.draw(this.st, ctx, W, H, Math.max(0, this.t));
+        const msg = t < 0 ? (gg.at ? String(Math.ceil(-t)) : "…") : this.sent ? (this.st.dead ? "Down" : "Done") : "";
+        if(t < 0 && gg.at && this.lastCount !== msg){ this.lastCount = msg; tick(); }
+        if(msg){
+          ctx.fillStyle = "rgba(22,26,74,.45)"; ctx.fillRect(0, 0, W, H);
+          ctx.fillStyle = "#FFC93C"; ctx.strokeStyle = "#161A4A"; ctx.lineWidth = 6; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+          ctx.font = `${msg.length > 2 ? 54 : 110}px "Bowlby One", Impact, sans-serif`;
+          ctx.strokeText(msg, W / 2, H / 2); ctx.fillText(msg, W / 2, H / 2);
+          if(this.sent){ ctx.font = `800 18px "Bricolage Grotesque", sans-serif`; ctx.fillStyle = "#FFF7E6"; ctx.fillText(`Waiting for ${nm(opp(me()))}…`, W / 2, H / 2 + 60); }
+        }
+        const [a, b] = this.hud(this.st, gg, Math.max(0, this.t)); this.h1.textContent = a; this.h2.textContent = b;
+      };
+      this.raf = requestAnimationFrame(loop);
+    },
+    finish(t){
+      if(this.sent) return; this.sent = true;
+      const r = {t: Math.round(t * 1000) / 1000}; if(this.score) r.s = this.score(this.st);
+      api.update(S.code, {[`g/res/${me()}`]: r}); tick(330, .2);
+    }
+  }, def);
+}
+const oppHits = (g) => g.hits?.[opp(me())] || 0;
+
+/* ---- Level Racer ---- */
+GAMES.car = realtime({
+  title: "Level Racer", short: "Keep the bubble centered",
+  blurb: "You're the level on a race car. Every turn shoves the bubble sideways. Tilt your phone left and right to keep it between the lines. 30 seconds. Most time lined up wins.",
+  init: () => ({seed: rnd(1e9)}), ratio: 1.25, duration: 30,
+  setup(rng){
+    const segs = []; let t = 0;
+    while(t < 34){ const d = 1.3 + rng() * 2.2; const c = rng() < 0.2 ? 0 : (rng() < .5 ? -1 : 1) * (0.45 + rng() * 0.55); segs.push({t, d, c}); t += d; }
+    return {segs, bub: 0, ok: 0, tot: 0, curve: 0, aligned: false, road: 0};
+  },
+  curveAt(st, t){
+    const s = st.segs; let i = s.findIndex(x => t < x.t + x.d); if(i < 0) i = s.length - 1;
+    const prev = i ? s[i - 1].c : 0, k = clamp((t - s[i].t) / 0.7, 0, 1), e = k * k * (3 - 2 * k);
+    return prev + (s[i].c - prev) * e;
+  },
+  step(st, dt, t, inp){
+    const c = this.curveAt(st, t); st.curve = c; st.road += dt * 9;
+    const counter = motionMode === "motion" ? clamp(tiltX / 22, -1.5, 1.5) : (inp.down ? (inp.x - 0.5) * 3 : 0);
+    const target = c * 1.25 - counter;
+    st.bub += (target - st.bub) * Math.min(1, dt * 5);
+    st.aligned = Math.abs(st.bub) < 0.2; st.tot += dt; if(st.aligned) st.ok += dt;
+  },
+  score: st => Math.round(st.ok / Math.max(st.tot, 0.001) * 1000) / 10,
+  detail: (a, b) => `${nm("p1")} ${a.s}% lined up, ${nm("p2")} ${b.s}%`,
+  hud: (st, g, t) => [`Lined up ${Math.round(st.ok / Math.max(st.tot, 0.001) * 100)}%`, `${Math.max(0, Math.ceil(30 - t))}s left`],
+  draw(st, c, W, H){
+    const hor = H * 0.36, base = H * 0.7;
+    const sky = c.createLinearGradient(0, 0, 0, hor); sky.addColorStop(0, "#7EC8F2"); sky.addColorStop(1, "#D8F0FF"); c.fillStyle = sky; c.fillRect(0, 0, W, hor);
+    const N = 40;
+    for(let i = N; i > 0; i--){
+      const d0 = (i - 1) / N, d1 = i / N;
+      const y0 = base - (base - hor) * Math.pow(d0, .6), y1 = base - (base - hor) * Math.pow(d1, .6);
+      const cx = d => W / 2 + st.curve * W * 0.45 * d * d, hw = d => W * 0.48 * (1 - d) + W * 0.015;
+      const band = Math.floor(d1 * 14 + st.road) % 2;
+      c.fillStyle = band ? "#5DB04F" : "#4C9A40"; c.fillRect(0, y1, W, y0 - y1 + 1);
+      c.fillStyle = band ? "#55575E" : "#4A4C53";
+      c.beginPath(); c.moveTo(cx(d0) - hw(d0), y0); c.lineTo(cx(d0) + hw(d0), y0); c.lineTo(cx(d1) + hw(d1), y1); c.lineTo(cx(d1) - hw(d1), y1); c.fill();
+      c.fillStyle = band ? "#E5412F" : "#fff";
+      const kw = d => hw(d) * 0.08;
+      [[-1], [1]].forEach(([sg]) => { c.beginPath(); c.moveTo(cx(d0) + sg * hw(d0), y0); c.lineTo(cx(d0) + sg * (hw(d0) + kw(d0)), y0); c.lineTo(cx(d1) + sg * (hw(d1) + kw(d1)), y1); c.lineTo(cx(d1) + sg * hw(d1), y1); c.fill(); });
+      if(band){ c.fillStyle = "#FFF7E6"; const lw = hw(d0) * 0.03; c.fillRect(cx(d0) - lw, y1, lw * 2, y0 - y1 + 1); }
+    }
+    if(Math.abs(st.curve) > 0.3){
+      c.fillStyle = "#FFC93C"; c.strokeStyle = "#161A4A"; c.lineWidth = 3; const sx = W / 2, sy = hor - 30, dir = Math.sign(st.curve);
+      c.beginPath(); c.roundRect(sx - 40, sy - 20, 80, 40, 6); c.fill(); c.stroke();
+      c.fillStyle = "#161A4A"; for(let k = -1; k <= 1; k++){ const x = sx + k * 20; c.beginPath(); c.moveTo(x - dir * 6, sy - 12); c.lineTo(x + dir * 8, sy); c.lineTo(x - dir * 6, sy + 12); c.lineTo(x - dir * 1, sy); c.fill(); }
+    }
+    c.fillStyle = "#161A4A"; c.fillRect(0, base, W, H - base);
+    const vx = W * 0.08, vw = W * 0.84, vy = base + (H - base) * 0.3, vh = Math.min(64, (H - base) * 0.42), mid = vx + vw / 2, half = vw / 2 - vh / 2;
+    c.fillStyle = st.aligned ? "#BFF2C8" : "#F6E7A8"; c.strokeStyle = st.aligned ? "#36C98A" : "#E5412F"; c.lineWidth = 5;
+    c.beginPath(); c.roundRect(vx, vy, vw, vh, vh / 2); c.fill(); c.stroke();
+    c.strokeStyle = "#161A4A"; c.lineWidth = 3;
+    [-1, 1].forEach(sg => { const x = mid + sg * 0.2 * half + sg * vh * 0.45; c.beginPath(); c.moveTo(x, vy + 4); c.lineTo(x, vy + vh - 4); c.stroke(); });
+    const bx = mid + clamp(st.bub, -1, 1) * half;
+    c.fillStyle = "rgba(255,255,255,.95)"; c.strokeStyle = "#161A4A"; c.lineWidth = 2;
+    c.beginPath(); c.ellipse(bx, vy + vh / 2, vh * 0.42, vh * 0.32, 0, 0, Math.PI * 2); c.fill(); c.stroke();
+  }
+});
+
+/* ---- Balloon ---- */
+const BIRDS = {
+  penguin:   {size: .045, sp: 1.25, body: "#1d1d1d", belly: "#fff", head: "#1d1d1d", beak: "#F9A825", neck: 0, beakLen: .4, legs: .3, feet: "#F9A825"},
+  kiwi:      {size: .035, sp: .7,  body: "#8B5A2B", head: "#8B5A2B", beak: "#E8D8A0", neck: 0, beakLen: 1.2, legs: .4, feet: "#C9A27A", thin: true},
+  dodo:      {size: .055, sp: .75, body: "#8C8C99", belly: "#B9B9C6", head: "#9C9CA8", beak: "#E8C547", neck: .25, beakLen: .8, legs: .35, feet: "#E8C547"},
+  kakapo:    {size: .05,  sp: 1.0, body: "#6BA539", belly: "#C2D86A", head: "#7DB443", beak: "#D9D3B8", neck: 0, beakLen: .35, legs: .3, feet: "#9C8B7A"},
+  emu:       {size: .07,  sp: 1.25, body: "#6B5440", head: "#4A4A55", neckColor: "#5A4A3E", beak: "#333", neck: .9, beakLen: .3, legs: 1.1, feet: "#555"},
+  ostrich:   {size: .075, sp: 1.45, body: "#222", head: "#E7A6A0", neckColor: "#E7A6A0", beak: "#D98C80", neck: 1.15, beakLen: .35, legs: 1.25, feet: "#E7A6A0"},
+  cassowary: {size: .07,  sp: 1.0, body: "#151515", head: "#3B6FD8", neckColor: "#3B6FD8", beak: "#333", neck: .8, beakLen: .35, legs: 1.0, feet: "#777", casque: true}
+};
+const BIRD_KEYS = Object.keys(BIRDS);
+function drawBird(c, B, x, y, r, t){
+  c.save(); c.translate(x, y); c.lineWidth = 2; c.strokeStyle = "#161A4A";
+  const sw = Math.sin(t * 12) * r * 0.15;
+  c.strokeStyle = B.feet; c.lineWidth = Math.max(2, r * 0.08);
+  [-0.25, 0.2].forEach((lx, i) => { c.beginPath(); c.moveTo(lx * r, r * 0.5); c.lineTo(lx * r + (i ? sw : -sw), r * (0.6 + B.legs)); c.lineTo(lx * r + (i ? sw : -sw) - r * 0.2, r * (0.6 + B.legs)); c.stroke(); });
+  c.strokeStyle = "#161A4A"; c.lineWidth = 2;
+  const hx = -r * (0.75 + B.neck * 0.35), hy = -r * (0.35 + B.neck * 1.1), hr = r * 0.34;
+  if(B.neck){ c.strokeStyle = B.neckColor || B.body; c.lineWidth = r * 0.3; c.lineCap = "round"; c.beginPath(); c.moveTo(-r * 0.5, -r * 0.2); c.quadraticCurveTo(-r * 0.75, hy * 0.5, hx, hy); c.stroke(); c.lineCap = "butt"; c.strokeStyle = "#161A4A"; c.lineWidth = 2; }
+  c.fillStyle = B.body; c.beginPath(); c.ellipse(0, 0, r, r * 0.72, 0, 0, Math.PI * 2); c.fill(); c.stroke();
+  if(B.belly){ c.fillStyle = B.belly; c.beginPath(); c.ellipse(-r * 0.3, r * 0.15, r * 0.55, r * 0.45, 0, 0, Math.PI * 2); c.fill(); }
+  c.save(); c.translate(r * 0.1, -r * 0.1); c.rotate(Math.sin(t * 22) * 0.7 - 0.3); c.fillStyle = B.body; c.beginPath(); c.ellipse(r * 0.25, 0, r * 0.32, r * 0.14, 0, 0, Math.PI * 2); c.fill(); c.stroke(); c.restore();
+  c.fillStyle = B.beak; c.beginPath(); const bl = r * B.beakLen;
+  if(B.thin){ c.moveTo(hx - hr * 0.6, hy - hr * 0.1); c.quadraticCurveTo(hx - hr - bl * 0.6, hy + hr * 0.1, hx - hr - bl, hy + hr * 0.6); c.lineTo(hx - hr * 0.6, hy + hr * 0.2); }
+  else { c.moveTo(hx - hr * 0.7, hy - hr * 0.35); c.lineTo(hx - hr - bl, hy + hr * 0.15); c.lineTo(hx - hr * 0.7, hy + hr * 0.45); }
+  c.closePath(); c.fill(); c.stroke();
+  c.fillStyle = B.head; c.beginPath(); c.arc(hx, hy, hr, 0, Math.PI * 2); c.fill(); c.stroke();
+  if(B.casque){ c.fillStyle = "#8B6B3A"; c.beginPath(); c.moveTo(hx - hr * 0.6, hy - hr * 0.7); c.lineTo(hx - hr * 0.1, hy - hr * 1.8); c.lineTo(hx + hr * 0.6, hy - hr * 0.6); c.fill(); c.stroke();
+    c.fillStyle = "#E5412F"; c.beginPath(); c.ellipse(hx + hr * 0.1, hy + hr * 1.2, hr * 0.25, hr * 0.5, 0, 0, Math.PI * 2); c.fill(); }
+  c.fillStyle = "#fff"; c.beginPath(); c.arc(hx - hr * 0.3, hy - hr * 0.15, hr * 0.32, 0, Math.PI * 2); c.fill();
+  c.fillStyle = "#161A4A"; c.beginPath(); c.arc(hx - hr * 0.38, hy - hr * 0.15, hr * 0.15, 0, Math.PI * 2); c.fill();
+  c.restore();
+}
+GAMES.balloon = realtime({
+  title: "Balloon Ride", short: "Dodge the flightless birds",
+  blurb: "Tap to fire the burner and rise. Stop tapping and you slowly drift down. Penguins, ostriches, and other birds that can't fly are flying at you anyway. 3 hits and your balloon deflates. Last balloon floating wins.",
+  init: () => ({seed: rnd(1e9)}), ratio: 1.35, survival: true,
+  setup(rng){ return {rng, y: 0.55, vy: 0, birds: [], next: 1.2, hits: 0, inv: 0, flame: 0, dead: false, clouds: [0, 1, 2, 3].map(i => ({x: rng(), y: 0.1 + rng() * 0.6, s: 0.6 + rng() * 0.8}))}; },
+  step(st, dt, t, inp){
+    if(inp.taps){ st.vy = Math.min(0.5, st.vy + 0.22 * inp.taps); st.flame = 0.25; tick(140, .08); }
+    st.vy = Math.max(-0.11, st.vy - 0.32 * dt); st.y = clamp(st.y + st.vy * dt, 0.08, 0.92);
+    if(st.y >= 0.92) st.vy = Math.min(st.vy, 0); if(st.y <= 0.08) st.vy = Math.max(st.vy, 0);
+    st.flame = Math.max(0, st.flame - dt); st.inv = Math.max(0, st.inv - dt);
+    while(t >= st.next){
+      const k = BIRD_KEYS[Math.floor(st.rng() * BIRD_KEYS.length)];
+      st.birds.push({k, y: 0.06 + st.rng() * 0.86, t0: st.next, v: 0.27 * BIRDS[k].sp * (1 + st.next * 0.03)});
+      st.next += Math.max(0.42, 1.5 - st.next * 0.03) * (0.6 + st.rng() * 0.8);
+    }
+    st.t = t;
+  },
+  draw(st, c, W, H, t){
+    const sky = c.createLinearGradient(0, 0, 0, H); sky.addColorStop(0, "#6FC3F0"); sky.addColorStop(1, "#E3F5FF"); c.fillStyle = sky; c.fillRect(0, 0, W, H);
+    c.fillStyle = "rgba(255,255,255,.85)";
+    st.clouds.forEach(cl => { const x = ((cl.x - t * 0.03 * cl.s) % 1.3 + 1.3) % 1.3 * W - W * 0.15, y = cl.y * H; c.beginPath(); [[0, 0, 1], [.8, .1, .8], [-.8, .15, .7]].forEach(([dx, dy, s]) => c.arc(x + dx * 26 * cl.s, y + dy * 20, 24 * cl.s * s, 0, Math.PI * 2)); c.fill(); });
+    c.fillStyle = "#5DB04F"; c.fillRect(0, H * 0.96, W, H * 0.04);
+    const bx = W * 0.27, by = (1 - st.y) * H, br = W * 0.075 * (1 - st.hits * 0.12);
+    const alive = !st.dead;
+    st.birds = st.birds.filter(b => { const x = (1.12 - b.v * ((st.t || 0) - b.t0)) * W; return x > -W * 0.2; });
+    st.birds.forEach(b => {
+      const B = BIRDS[b.k], r = B.size * W, x = (1.12 - b.v * ((st.t || 0) - b.t0)) * W, y = (1 - b.y) * H;
+      drawBird(c, B, x, y, r, t + b.t0);
+      if(alive && !b.hit && st.inv <= 0 && Math.hypot(x - bx, y - by) < br + r * 0.8){ b.hit = true; st.hits++; st.inv = 1.2; tick(180, .25); if(st.hits >= 3) st.dead = true; }
+    });
+    const blink = st.inv > 0 && Math.floor(t * 12) % 2;
+    if(!blink){
+      c.strokeStyle = "#161A4A"; c.lineWidth = 2;
+      [-0.6, 0.6].forEach(s => { c.beginPath(); c.moveTo(bx + s * br * 0.7, by + br * 0.75); c.lineTo(bx + s * br * 0.35, by + br * 1.55); c.stroke(); });
+      if(st.flame > 0 && alive){ c.fillStyle = "#FFC93C"; c.beginPath(); c.moveTo(bx - 6, by + br * 1.45); c.lineTo(bx, by + br * 1.05); c.lineTo(bx + 6, by + br * 1.45); c.fill(); }
+      c.fillStyle = "#A85A24"; c.fillRect(bx - br * 0.38, by + br * 1.5, br * 0.76, br * 0.5); c.strokeRect(bx - br * 0.38, by + br * 1.5, br * 0.76, br * 0.5);
+      c.save(); c.beginPath(); c.ellipse(bx, by, br, br * 1.1, 0, 0, Math.PI * 2); c.clip();
+      ["#FF5C9E", "#FFC93C", "#2B3BD6", "#FFC93C", "#FF5C9E"].forEach((col, i) => { c.fillStyle = alive ? col : "#999"; c.fillRect(bx - br + i * br * 0.4, by - br * 1.2, br * 0.4 + 1, br * 2.4); });
+      c.restore(); c.beginPath(); c.ellipse(bx, by, br, br * 1.1, 0, 0, Math.PI * 2); c.stroke();
+      for(let i = 0; i < st.hits; i++){ c.fillStyle = "#FFF7E6"; c.fillRect(bx - br * 0.5 + i * br * 0.35, by - br * 0.2 + (i % 2) * br * 0.3, br * 0.22, br * 0.18); c.strokeRect(bx - br * 0.5 + i * br * 0.35, by - br * 0.2 + (i % 2) * br * 0.3, br * 0.22, br * 0.18); }
+    }
+  },
+  detail: (a, b) => { const w = a.t > b.t ? "p1" : "p2"; return `${nm(w)} floated ${Math.max(a.t, b.t).toFixed(1)}s`; },
+  hud: (st, g) => [`Hits: ${"●".repeat(st.hits)}${"○".repeat(Math.max(0, 3 - st.hits))}`, `${nm(opp(me()))}: ${"●".repeat(oppHits(g))}${"○".repeat(Math.max(0, 3 - oppHits(g)))}`]
+});
+
+/* ---- Cube Runner ---- */
+GAMES.cube = realtime({
+  title: "Cube Runner", short: "Tilt through the cube field",
+  blurb: "Tilt your phone left and right to steer through an endless field of cubes. It keeps getting faster. Outlast your opponent.",
+  init: () => ({seed: rnd(1e9)}), ratio: 1.3, survival: true,
+  setup(rng, c){ return {seed: Math.floor(rng() * 1e9), x: 0, z: 0, steer: 0, lives: c.crash || 1, hits: 0, inv: 0, dead: false, gone: new Set(), chunks: {}}; },
+  chunk(st, i){
+    if(st.chunks[i]) return st.chunks[i];
+    const r = mulberry(st.seed + i * 7919), n = i < 3 ? 0 : Math.min(16, 5 + Math.floor(i * 0.25)), list = [];
+    for(let k = 0; k < n; k++) list.push({id: i * 100 + k, x: (r() * 2 - 1) * 32, z: i * 10 + r() * 10, hue: Math.floor(r() * 3)});
+    return st.chunks[i] = list;
+  },
+  step(st, dt, t, inp){
+    const v = 16 + t * 1.1;
+    const s = motionMode === "motion" ? clamp(tiltX / 20, -1, 1) : (inp.down ? (inp.x < 0.5 ? -1 : 1) : 0);
+    st.steer += (s - st.steer) * Math.min(1, dt * 8);
+    st.x = clamp(st.x + st.steer * 15 * dt, -30, 30); st.z += v * dt; st.inv = Math.max(0, st.inv - dt);
+    const ci = Math.floor(st.z / 10);
+    for(const i of [ci, ci + 1]) for(const cb of this.chunk(st, i)){
+      if(st.gone.has(cb.id)) continue;
+      if(Math.abs(cb.z - st.z) < 0.6 && Math.abs(cb.x - st.x) < 1.05 && st.inv <= 0){
+        st.gone.add(cb.id); st.hits++; st.inv = 1.5; tick(150, .3);
+        if(st.hits >= st.lives) st.dead = true;
+      }
+    }
+    for(const k in st.chunks) if(+k < ci - 1) delete st.chunks[k];
+  },
+  draw(st, c, W, H, t){
+    const hor = H * 0.3, F = W * 0.85, camH = 1.6;
+    const sky = c.createLinearGradient(0, 0, 0, hor); sky.addColorStop(0, "#2B3BD6"); sky.addColorStop(1, "#9DB7FF"); c.fillStyle = sky; c.fillRect(0, 0, W, hor);
+    const gr = c.createLinearGradient(0, hor, 0, H); gr.addColorStop(0, "#C9D3FF"); gr.addColorStop(1, "#FFF7E6"); c.fillStyle = gr; c.fillRect(0, hor, W, H - hor);
+    const proj = (X, Y, Z) => { const dz = Z - st.z + 1.2; return [W / 2 + (X - st.x) * F / dz, hor + (camH - Y) * F / dz, dz]; };
+    const ci = Math.floor(st.z / 10), cubes = [];
+    for(let i = ci; i < ci + 9; i++) for(const cb of this.chunk(st, i)) if(!st.gone.has(cb.id) && cb.z > st.z - 0.5) cubes.push(cb);
+    cubes.sort((a, b) => b.z - a.z);
+    const cols = [["#FF5C9E", "#FF9CC4"], ["#FFC93C", "#FFE38F"], ["#E5412F", "#F28C7F"]];
+    for(const cb of cubes){
+      const s = 0.6, h = 1.2, [x0, y0, dz] = proj(cb.x - s, 0, cb.z - s), [x1] = proj(cb.x + s, 0, cb.z - s), [, yt] = proj(cb.x, h, cb.z - s);
+      const [bx0, byt] = proj(cb.x - s, h, cb.z + s), [bx1] = proj(cb.x + s, h, cb.z + s);
+      if(dz < 0.3 || x1 < -50 || x0 > W + 50) continue;
+      const fog = clamp((dz - 20) / 70, 0, 0.85);
+      c.globalAlpha = 1 - fog;
+      c.fillStyle = cols[cb.hue][1]; c.beginPath(); c.moveTo(x0, yt); c.lineTo(x1, yt); c.lineTo(bx1, byt); c.lineTo(bx0, byt); c.fill();
+      c.fillStyle = cols[cb.hue][0]; c.fillRect(x0, yt, x1 - x0, y0 - yt);
+      c.strokeStyle = "#161A4A"; c.lineWidth = Math.max(1, 3 - dz * 0.05); c.strokeRect(x0, yt, x1 - x0, y0 - yt);
+      c.globalAlpha = 1;
+    }
+    if(!(st.inv > 0 && Math.floor(t * 12) % 2)){
+      const sx = W / 2, sy = H * 0.86, sw = W * 0.07;
+      c.save(); c.translate(sx, sy); c.rotate(st.steer * 0.3);
+      c.fillStyle = st.dead ? "#888" : "#2B3BD6"; c.strokeStyle = "#161A4A"; c.lineWidth = 3;
+      c.beginPath(); c.moveTo(0, -sw * 1.3); c.lineTo(sw, sw * 0.5); c.lineTo(0, sw * 0.15); c.lineTo(-sw, sw * 0.5); c.closePath(); c.fill(); c.stroke();
+      c.restore();
+    }
+  },
+  detail: (a, b) => { const w = a.t > b.t ? "p1" : "p2"; return `${nm(w)} lasted ${Math.max(a.t, b.t).toFixed(1)}s`; },
+  hud: (st, g, t) => [`${Math.floor(st.z)} m${st.lives > 1 ? " · Crashes " + st.hits + "/" + st.lives : ""}`, st.lives > 1 ? `${nm(opp(me()))}: ${oppHits(g)}/${st.lives}` : ""]
+});
+
+/* ---- Coconut Shells ---- */
+const COCO = `<svg viewBox="0 0 100 80"><path d="M6 76 C6 26 28 4 50 4 C72 4 94 26 94 76 Z" fill="#7A4A22" stroke="#161A4A" stroke-width="4"/><path d="M22 70 C24 40 34 20 46 12 M42 72 C42 46 48 26 56 12 M64 72 C64 48 70 30 78 22" stroke="#5A3416" stroke-width="3" fill="none"/><ellipse cx="50" cy="76" rx="44" ry="4" fill="#5A3416"/></svg>`;
+GAMES.shell = {
+  title: "Coconut Shells", short: "Follow the ball",
+  blurb: "One player hides a ball under a coconut and shuffles by dragging shells around. The other picks which shell it's under. Best of 3 rounds, taking turns hiding.",
+  init: (first) => ({round: 1, hider: first, ball: rnd(3), phase: "start"}),
+  mount(root){ this.root = root; this.key = null; this.timers = []; },
+  unmount(){ this.timers.forEach(clearTimeout); this.timers = []; cancelAnimationFrame(this.raf); },
+  build(){
+    this.root.innerHTML = "";
+    const w = el(`<div><div class="status" data-s></div><div class="hud"><span data-h1></span><span data-h2></span></div><div class="shells"></div><p class="center" style="color:var(--paper);min-height:3em" data-m></p><div data-b></div></div>`);
+    this.root.append(w);
+    this.S = w.querySelector("[data-s]"); this.M = w.querySelector("[data-m]"); this.B = w.querySelector("[data-b]"); this.box = w.querySelector(".shells");
+    this.h1 = w.querySelector("[data-h1]"); this.h2 = w.querySelector("[data-h2]");
+    this.shellEls = [0, 1, 2].map(id => { const s = el(`<div class="shell">${COCO}</div>`); this.box.append(s); return s; });
+    this.ballEl = el(`<div class="ball"></div>`); this.box.prepend(this.ballEl);
+  },
+  layout(order, skip = -1, gapAt = -1){
+    const slots = order.filter(id => id !== skip);
+    if(gapAt >= 0) slots.splice(gapAt, 0, null);
+    slots.forEach((id, i) => { if(id !== null) this.shellEls[id].style.left = (i * 33.33 + 1.6) + "%"; });
+    const bi = slots.indexOf(this.ball), sb = bi >= 0 ? bi : gapAt; this.ballEl.style.left = `calc(${sb * 33.33 + 16.66}% - 17px)`;
+  },
+  setBall(show, lift){ this.ballEl.style.visibility = show ? "visible" : "hidden"; this.shellEls.forEach((s, id) => { s.style.opacity = this.aerial ? .55 : 1; s.style.transform = lift && id === this.ball ? "translateY(-70px)" : ""; }); },
+  update(g){
+    const p = me(), hider = g.hider, iHide = hider === p, key = g.round + g.phase, c = cfg(), wins = g.wins || {};
+    if(!this.S) this.build();
+    this.ball = g.ball; this.aerial = iHide && g.phase !== "start";
+    this.h1.textContent = `Round ${g.round} of 3`; this.h2.textContent = `You ${wins[p] || 0} – ${wins[opp(p)] || 0} ${nm(opp(p))}`;
+    const moves = arr(g.moves);
+    if(this.key !== key){
+      this.key = key; this.timers.forEach(clearTimeout); this.timers = []; this.busy = false; cancelAnimationFrame(this.raf); this.B.innerHTML = "";
+      this.shellEls.forEach(s => { s.onpointerdown = null; s.classList.remove("drag"); });
+      if(g.phase === "start"){
+        this.order = [0, 1, 2]; this.layout(this.order); this.setBall(true, true);
+        const last = g.last;
+        this.S.textContent = iHide ? "You're hiding" : `${nm(hider)} is hiding`;
+        this.M.innerHTML = (last ? `<b>${last.correct ? esc(nm(last.guesser)) + " found it." : "Wrong shell."}</b><br>` : "") + (iHide ? "The ball starts here. Shuffle when ready." : "Watch where the ball starts.");
+        if(iHide){ const b = el(`<button class="btn">Start shuffling</button>`); b.onclick = () => api.update(S.code, {"g/phase": "shuffle"}); this.B.append(b); }
+      } else if(g.phase === "shuffle"){
+        this.setBall(iHide, false);
+        if(iHide) this.runShuffle(c.shellTime, c.shellView);
+        else { this.order = [0, 1, 2]; this.applied = 0; this.layout(this.order); this.S.textContent = `${nm(hider)} is shuffling`; this.M.textContent = c.shellView === "live" ? "Keep your eye on the ball." : "You'll see the replay when they're done."; }
+      } else if(g.phase === "guess"){
+        if(iHide){ this.S.textContent = `${nm(opp(p))} is guessing`; this.M.textContent = "Fingers crossed."; this.order = this.replayOrder(moves); this.layout(this.order); this.setBall(true, false); }
+        else if(c.shellView === "live"){ this.liveCatchUp(moves, () => this.enableGuess(g)); }
+        else { this.order = [0, 1, 2]; this.layout(this.order); this.S.textContent = "Replay"; this.M.textContent = "Watch closely."; this.replay(moves, () => this.enableGuess(g)); }
+      }
+    } else if(g.phase === "shuffle" && !iHide && c.shellView === "live") this.liveCatchUp(moves);
+  },
+  apply(order, m){ const o = order.slice(); o.splice(m.to, 0, o.splice(m.f, 1)[0]); return o; },
+  replayOrder(moves){ return moves.reduce((o, m) => this.apply(o, m), [0, 1, 2]); },
+  liveCatchUp(moves, done){
+    if(this.busy){ this.pendingDone = done || this.pendingDone; return; }
+    if(this.applied === undefined){ this.applied = 0; this.order = [0, 1, 2]; }
+    if(this.applied < moves.length){
+      this.busy = true; const m = moves[this.applied++]; this.order = this.apply(this.order, m); this.layout(this.order); tick(500, .05);
+      this.timers.push(setTimeout(() => { this.busy = false; this.liveCatchUp(arr(R.g?.moves), this.pendingDone || done); }, 300));
+    } else { const d = done || this.pendingDone; this.pendingDone = null; if(d && R.g?.phase === "guess") { this.applied = undefined; d(); } }
+  },
+  replay(moves, done){
+    let i = 0, prevT = 0;
+    const next = () => {
+      if(i >= moves.length){ this.timers.push(setTimeout(done, 400)); return; }
+      const m = moves[i], gap = clamp(m.t - prevT, 280, 1000); prevT = m.t;
+      this.timers.push(setTimeout(() => { this.order = this.apply(this.order, m); this.layout(this.order); tick(500, .05); i++; next(); }, gap));
+    };
+    this.timers.push(setTimeout(next, 600));
+  },
+  enableGuess(g){
+    this.S.textContent = "Which shell?"; this.M.textContent = "Tap the one with the ball.";
+    this.shellEls.forEach((s, id) => s.onpointerdown = () => {
+      const slot = this.order.indexOf(id); this.shellEls.forEach(x => x.onpointerdown = null);
+      txg((gs, cur) => {
+        if(gs.phase !== "guess" || gs.round !== g.round) return false;
+        const fin = this.replayOrder(arr(gs.moves)), ballSlot = fin.indexOf(gs.ball), guesser = opp(gs.hider), correct = slot === ballSlot;
+        const w = correct ? guesser : gs.hider; gs.wins ||= {}; gs.wins[w] = (gs.wins[w] || 0) + 1;
+        gs.last = {round: gs.round, correct, guesser};
+        if(gs.wins[w] >= 2){ endIn(cur, w, correct ? `${nm(guesser)} found the ball` : `${nm(gs.hider)} fooled ${nm(guesser)}`); return; }
+        gs.round++; gs.hider = opp(gs.hider); gs.ball = rnd(3); gs.phase = "start"; delete gs.moves;
+      });
+    });
+  },
+  runShuffle(secs, view){
+    this.order = [0, 1, 2]; this.layout(this.order); const moves = []; const t0 = performance.now(); let over = false;
+    this.S.textContent = "Shuffle!"; this.M.textContent = "Drag a shell to a new spot.";
+    const send = (final) => { const patch = {"g/moves": moves.slice()}; if(final) patch["g/phase"] = "guess"; if(final || view === "live") api.update(S.code, patch); };
+    const tickDown = () => { if(over) return; const left = secs - (performance.now() - t0) / 1000; this.h1.textContent = `${Math.max(0, left).toFixed(1)}s`; if(left <= 0){ over = true; this.shellEls.forEach(s => s.onpointerdown = null); this.S.textContent = "Time"; send(true); return; } this.raf = requestAnimationFrame(tickDown); };
+    tickDown();
+    this.shellEls.forEach((s, id) => s.onpointerdown = (e) => {
+      if(over) return; e.preventDefault();
+      const box = this.box.getBoundingClientRect(), from = this.order.indexOf(id); let to = from;
+      s.classList.add("drag"); try{ s.setPointerCapture(e.pointerId); }catch{}
+      const move = (ev) => { const x = ev.clientX - box.left; to = clamp(Math.floor(x / (box.width / 3)), 0, 2); s.style.left = (x - box.width * 0.15) + "px"; this.layout(this.order, id, to); };
+      const up = () => {
+        s.removeEventListener("pointermove", move); s.removeEventListener("pointerup", up); s.removeEventListener("pointercancel", up); s.classList.remove("drag");
+        if(!over && to !== from){ const m = {f: from, to, t: Math.round(performance.now() - t0)}; this.order = this.apply(this.order, m); moves.push(m); tick(500, .05); send(false); }
+        this.layout(this.order);
+      };
+      s.addEventListener("pointermove", move); s.addEventListener("pointerup", up); s.addEventListener("pointercancel", up);
+    });
+  }
+};
+
+/* ---- Rock Paper Scissors ---- */
+const RPS = {r: "✊", p: "✋", s: "✌️"}, BEATS = {r: "s", p: "r", s: "p"};
+GAMES.rps = {
+  title: "Rock Paper Scissors", short: "Best of 3 throws",
+  blurb: "Pick before the 3-second countdown ends. No pick loses the throw. Ties don't count. Best of 3.",
+  init: () => ({n: 1}),
+  mount(root){ this.root = root; this.n = 0; this.pick = null; this.sentN = 0; },
+  unmount(){ clearInterval(this.iv); },
+  update(g){
+    const p = me(), o = opp(p), res = g.res || {};
+    this.g = g;
+    if(!g.at) txg(gs => { if(gs.at) return false; gs.at = api.now() + 1500; });
+    if(this.n !== g.n){ this.n = g.n; this.pick = null; this.build(); }
+    if(res.p1?.n === g.n && res.p2?.n === g.n) txg((gs, cur) => {
+      const a = gs.res?.p1, b = gs.res?.p2; if(a?.n !== gs.n || b?.n !== gs.n) return false;
+      let w = null;
+      if(a.c === "x" && b.c !== "x") w = "p2"; else if(b.c === "x" && a.c !== "x") w = "p1";
+      else if(a.c !== b.c && a.c !== "x") w = BEATS[a.c] === b.c ? "p1" : "p2";
+      gs.last = {n: gs.n, p1: a.c, p2: b.c, w}; gs.wins ||= {};
+      if(w){ gs.wins[w] = (gs.wins[w] || 0) + 1; if(gs.wins[w] >= 2){ endIn(cur, w, `${nm(w)} won ${gs.wins[w]}–${gs.wins[opp(w)] || 0}`); return; } }
+      gs.n++; gs.at = api.now() + 2600; delete gs.res;
+    });
+  },
+  build(){
+    cancelAnimationFrame(this.raf);
+    const p = me(), o = opp(p), g = this.g, wins = g.wins || {}, last = g.last;
+    this.root.innerHTML = "";
+    const w = el(`<div><div class="hud"><span>Throw ${g.n}</span><span>You ${wins[p] || 0} – ${wins[o] || 0} ${esc(nm(o))}</span></div>
+      <div class="card center">${last ? `<p style="font-size:44px;margin:0">${last[p] === "x" ? "😶" : RPS[last[p]]} vs ${last[o] === "x" ? "😶" : RPS[last[o]]}</p><p><b>${last.w ? (last.w === p ? "You took that one." : esc(nm(o)) + " took that one.") : "Tie. Doesn't count."}</b></p>` : `<p><b>Get ready.</b></p>`}</div>
+      <div class="big-count" data-c>…</div><div class="rps">${Object.entries(RPS).map(([k, v]) => `<button data-k="${k}" aria-pressed="false" disabled>${v}</button>`).join("")}</div></div>`);
+    this.root.append(w);
+    const cEl = w.querySelector("[data-c]"), btns = [...w.querySelectorAll("[data-k]")];
+    btns.forEach(b => b.onpointerdown = (e) => { e.preventDefault(); if(b.disabled) return; this.pick = b.dataset.k; btns.forEach(x => x.setAttribute("aria-pressed", x === b)); tick(700, .05); });
+    let lastShown = null;
+    clearInterval(this.iv);
+    const loop = () => {
+      const gg = this.g; if(!gg.at) return;
+      const t = api.now() - gg.at;
+      if(t < 0){ btns.forEach(b => b.disabled = true); cEl.textContent = "…"; return; }
+      if(t < 3000){ btns.forEach(b => b.disabled = false); const s = String(3 - Math.floor(t / 1000)); if(s !== lastShown){ lastShown = s; cEl.textContent = s; tick(); } return; }
+      btns.forEach(b => b.disabled = true);
+      if(this.sentN !== gg.n){ this.sentN = gg.n; cEl.textContent = this.pick ? "Locked" : "Too slow"; tick(1320, .15); api.update(S.code, {[`g/res/${me()}`]: {n: gg.n, c: this.pick || "x"}}); }
+    };
+    this.iv = setInterval(loop, 50);
+  }
+};
+
 const GAME_IDS = Object.keys(GAMES);
 
 /* ---------------- screens ---------------- */
@@ -740,23 +1214,25 @@ function homeScreen(err = ""){
   app.innerHTML = "";
   const w = el(`<div>
     ${LOCAL ? `<div class="banner">Local test mode: open this page in a second tab to play against yourself.</div>` : ""}
+    <button class="gear" data-a="settings" aria-label="Settings">⚙</button>
     <div class="logo">Grudge<span>Match</span></div>
     <p class="tag">Eight mini games. Winner picks the next one.</p>
     <div class="card"><label for="nm">Your name</label><input id="nm" maxlength="14" autocomplete="off" value="${esc(localStorage.getItem("grudge_name") || "")}"></div>
-    <div class="card"><h2>Start a match</h2><div class="seg" role="group"><button aria-pressed="true" data-b="3">Best of 3</button><button aria-pressed="false" data-b="5">Best of 5</button></div>
+    <div class="card"><h2>Start a match</h2><div class="seg" role="group"><button aria-pressed="true" data-b="3">Best of 3</button><button aria-pressed="false" data-b="5">Best of 5</button><button aria-pressed="false" data-b="7">Best of 7</button></div>
       <button class="btn" data-a="create">Create match</button></div>
     <div class="card"><h2>Join a match</h2><label for="cd">Match code</label><input id="cd" maxlength="4" autocomplete="off" style="text-transform:uppercase;letter-spacing:.2em" value="${esc(INVITE)}">
       <button class="btn alt" data-a="join">Join match</button><div class="err">${esc(err)}</div></div></div>`);
   app.append(w);
   const name = () => { const v = w.querySelector("#nm").value.trim(); if(v) localStorage.setItem("grudge_name", v); return v; };
   const errEl = w.querySelector(".err");
+  w.querySelector("[data-a=settings]").onclick = settingsScreen;
   w.querySelectorAll("[data-b]").forEach(b => b.onclick = () => { bestOf = +b.dataset.b; w.querySelectorAll("[data-b]").forEach(x => x.setAttribute("aria-pressed", x === b)); });
   w.querySelector("[data-a=create]").onclick = async () => {
     const n = name(); if(!n){ errEl.textContent = "Enter your name first."; return; }
     audio();
     const L = "ABCDEFGHJKMNPQRSTUVWXYZ"; let code;
     for(let i = 0; i < 10; i++){ code = [...Array(4)].map(() => L[rnd(L.length)]).join(""); if(!isClean(code)) { i--; continue; } if(!(await api.get(code))) break; }
-    try{ await api.update(code, {created: Date.now(), bestOf, phase: "lobby", "players/p1": {name: n}, score: {p1: 0, p2: 0}}); }
+    try{ await api.update(code, {created: Date.now(), bestOf, cfg: getCfg(), phase: "lobby", "players/p1": {name: n}, score: {p1: 0, p2: 0}}); }
     catch{ errEl.textContent = "Couldn't create the match. Check the Firestore rules."; return; }
     S = {code, pid: "p1", name: n}; saveS(); connect();
   };
@@ -773,11 +1249,37 @@ function homeScreen(err = ""){
   };
 }
 
+const CFG_DEFAULT = {crash: 1, shellTime: 10, shellView: "replay"};
+function getCfg(){ try{ return Object.assign({}, CFG_DEFAULT, JSON.parse(localStorage.getItem("grudge_cfg") || "{}")); }catch{ return {...CFG_DEFAULT}; } }
+const cfg = () => Object.assign({}, CFG_DEFAULT, R?.cfg || {});
+const CFG_OPTS = [
+  ["crash", "Cube Runner", [[1, "First crash loses"], [3, "3 crashes and out"]]],
+  ["shellTime", "Coconut shuffle time", [[10, "10 seconds"], [15, "15 seconds"]]],
+  ["shellView", "Coconut guesser sees", [["replay", "Replay after"], ["live", "Live moves"]]]
+];
+const cfgText = (c) => CFG_OPTS.map(([k, label, opts]) => `${label}: ${opts.find(o => o[0] === c[k])?.[1] ?? c[k]}`).join(" · ");
+function settingsScreen(){
+  const c = getCfg();
+  app.innerHTML = "";
+  const w = el(`<div><div class="logo" style="font-size:46px">Settings</div><p class="tag">These apply to matches you create.</p>
+    ${CFG_OPTS.map(([k, label, opts]) => `<div class="card"><h2 style="font-size:22px">${label}</h2><div class="seg" role="group">
+      ${opts.map(([v, t]) => `<button data-k="${k}" data-v="${v}" aria-pressed="${c[k] === v}">${t}</button>`).join("")}</div></div>`).join("")}
+    <button class="btn" data-a="back">Done</button></div>`);
+  w.querySelectorAll("[data-k]").forEach(b => b.onclick = () => {
+    const k = b.dataset.k, opt = CFG_OPTS.find(o => o[0] === k)[2].find(o => String(o[0]) === b.dataset.v);
+    c[k] = opt[0]; localStorage.setItem("grudge_cfg", JSON.stringify(c));
+    w.querySelectorAll(`[data-k="${k}"]`).forEach(x => x.setAttribute("aria-pressed", x === b));
+  });
+  w.querySelector("[data-a=back]").onclick = () => homeScreen();
+  app.append(w);
+}
+
 function leave(){ if(unsub) unsub(); unsub = null; S = null; STORE.removeItem("grudge_s"); R = null; homeScreen(); }
 
 function connect(){
   if(unsub) unsub();
   unsub = api.listen(S.code, v => { if(!v){ leave(); return; } R = v; render(); });
+  api.syncClock(S.code, S.pid);
 }
 
 function lobby(){
@@ -786,6 +1288,7 @@ function lobby(){
   const both = !!R.players?.p2;
   const w = el(`<div>${scoreboard()}<div class="card center"><h2>Match code</h2><div class="code">${S.code}</div>
     <p>${both ? `${esc(nm("p2"))} is here.` : "Send this code to your opponent."}</p>
+    <p class="muted" style="font-size:14px">Best of ${R.bestOf} · ${esc(cfgText(cfg()))}</p>
     ${both ? "" : `<button class="btn alt" data-a="invite">Send invite link</button>`}
     ${me() === "p1" ? `<button class="btn" data-a="go" ${both ? "" : "disabled"}>Start match</button>` : `<p class="muted">Waiting for ${esc(nm("p1"))} to start.</p>`}
     <button class="btn ghost" data-a="leave">Leave</button></div></div>`);
@@ -811,13 +1314,14 @@ function playing(){
   } else app.querySelector(".score").outerHTML = scoreboard();
   const stage = document.getElementById("stage");
   if(!bothReady){
-    const turnBased = ["ttt", "pig", "hide", "chest"].includes(R.current);
+    const turnBased = ["ttt", "pig", "hide", "chest", "shell"].includes(R.current);
+    const firstVerb = R.current === "shell" ? "hide" : "go";
     stage.innerHTML = "";
     const c = el(`<div><div class="status">Game ${R.gameNum}</div><div class="card"><h2>${G.title}</h2><p>${G.blurb}</p>
-      ${turnBased ? `<p><b>${g.first === p ? "You go" : esc(nm(g.first)) + " goes"} first.</b></p>` : ""}
+      ${turnBased ? `<p><b>${g.first === p ? "You " + firstVerb : esc(nm(g.first)) + " " + firstVerb + "s"} first.</b></p>` : ""}
       ${rdy[p] ? `<p class="muted">Waiting for ${esc(nm(opp(p)))}…</p>` : `<button class="btn">I'm ready</button>`}</div></div>`);
     const b = c.querySelector("button");
-    if(b) b.onclick = () => { audio(); if(R.current === "draw") requestMotion(); api.update(S.code, {[`g/rdy/${p}`]: true}); };
+    if(b) b.onclick = () => { audio(); if(["draw", "car", "cube"].includes(R.current)) requestMotion(); api.update(S.code, {[`g/rdy/${p}`]: true}); };
     stage.append(c);
     return;
   }
@@ -830,7 +1334,7 @@ function result(){
   app.innerHTML = "";
   const w = el(`<div>${scoreboard()}
     <p class="verdict">${won ? "You won" : esc(nm(r.winner)) + " won"} ${esc(GAMES[r.game].title)}</p>
-    <div class="slam ${won ? "" : "lose"}">${esc(msgFor("g" + r.n, won))}</div>
+    <div class="slam ${won ? "" : "lose"}">${esc(msgFor(S.code + R.created + "g" + r.n + r.winner, won ? WIN_MSGS : LOSE_MSGS))}</div>
     <p class="detail">${esc(r.detail)}</p>
     ${won ? `<div class="status mine" style="text-align:left">Pick the next game</div><div class="picks"></div>` : `<div class="card center"><p><b>${esc(nm(r.winner))} is picking the next game.</b></p></div>`}</div>`);
   if(won){
@@ -851,7 +1355,7 @@ function over(){
   app.innerHTML = "";
   const w = el(`<div>${scoreboard()}
     <p class="verdict">${won ? "You won the match" : esc(nm(r.winner)) + " won the match"}</p>
-    <div class="slam ${won ? "" : "lose"}">${esc(msgFor("o" + r.n, won))}</div>
+    <div class="slam ${won ? "" : "lose"}">${esc(msgFor(S.code + R.created + "o" + r.n + r.winner, won ? MATCH_WIN_MSGS : MATCH_LOSE_MSGS))}</div>
     <p class="detail">${esc(GAMES[r.game].title)}: ${esc(r.detail)}</p>
     <div class="card center">${rm[p] ? `<p><b>Waiting for ${esc(nm(opp(p)))} to accept the rematch.</b></p>` : `<p>${rm[opp(p)] ? `<b>${esc(nm(opp(p)))} wants a rematch.</b>` : "Again?"}</p><button class="btn">Rematch</button>`}
     <button class="btn ghost" data-a="leave">Leave</button></div></div>`);
