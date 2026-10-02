@@ -44,7 +44,8 @@ input:focus-visible,button:focus-visible{outline:3px solid var(--pink);outline-o
 .seg{display:flex;gap:8px}
 .seg button{flex:1;font:800 18px var(--body);padding:10px;border:3px solid var(--ink);border-radius:12px;background:#fff;color:var(--ink);cursor:pointer}
 .seg button[aria-pressed="true"]{background:var(--ink);color:var(--paper)}
-.gear{float:right;margin-top:14px;width:48px;height:48px;font-size:26px;border:3px solid var(--ink);border-radius:14px;background:var(--paper);box-shadow:3px 3px 0 var(--ink);cursor:pointer;color:var(--ink)}
+.topbar{display:flex;justify-content:flex-end;position:relative;z-index:5;margin-top:6px}
+.gear{width:48px;height:48px;font-size:26px;border:3px solid var(--ink);border-radius:14px;background:var(--paper);box-shadow:3px 3px 0 var(--ink);cursor:pointer;color:var(--ink)}
 .cv{display:block;width:100%;border:3px solid var(--ink);border-radius:18px;background:#9ED8F5;touch-action:none}
 .hud{display:flex;justify-content:space-between;color:var(--paper);font-weight:800;margin:0 2px 8px}
 .shells{position:relative;height:190px;background:linear-gradient(#F4D58D,#E8BF6A);border:3px solid var(--ink);border-radius:18px;overflow:hidden;touch-action:none}
@@ -276,16 +277,15 @@ const api = LOCAL ? (() => {
     async tx(c, mut){ await ready;
       return F.runTransaction(fs, async t => { const s = await t.get(ref(c)); if(!s.exists()) return false; const v = clone(s.data()); delete v.clk; if(mut(v) === false) return false; t.set(ref(c), prune(v) || {}); return true; }); },
     async syncClock(c, pid){
-      await ready; const f = "clk." + pid; let best = null;
+      await ready; const r = F.doc(fs, COLL, c + "_clk_" + pid); let best = null;
       for(let i = 0; i < 3; i++){
         try{
-          const t0 = Date.now(); await F.updateDoc(ref(c), {[f]: F.serverTimestamp()}); const t1 = Date.now();
-          const s = await F.getDoc(ref(c)); const ts = s.data()?.clk?.[pid];
+          const t0 = Date.now(); await F.setDoc(r, {ts: F.serverTimestamp()}); const t1 = Date.now();
+          const snap = await F.getDoc(r); const ts = snap.data()?.ts;
           if(ts && ts.toMillis && (!best || t1 - t0 < best.rtt)) best = {rtt: t1 - t0, off: ts.toMillis() - (t0 + t1) / 2};
         }catch{}
       }
       if(best) offset = best.off;
-      try{ await F.updateDoc(ref(c), {[f]: F.deleteField()}); }catch{}
     },
     now(){ return Date.now() + offset; }
   };
@@ -374,7 +374,7 @@ function endIn(cur, winner, detail){
   cur.phase = cur.score[winner] >= Math.ceil(cur.bestOf / 2) ? "over" : "result";
 }
 function startGame(cur, id, first){
-  cur.current = id; cur.gameNum = (cur.gameNum || 0) + 1; cur.g = GAMES[id].init(first, cur); cur.g.first = first; cur.phase = "playing"; delete cur.result;
+  delete cur.pickedBy; cur.current = id; cur.gameNum = (cur.gameNum || 0) + 1; cur.g = GAMES[id].init(first, cur); cur.g.first = first; cur.phase = "playing";
 }
 
 /* ---------------- games ---------------- */
@@ -516,11 +516,11 @@ GAMES.race = {
   unmount(){ clearInterval(this.flush); clearInterval(this.cd); },
   update(g){
     const p = me();
-    if(!g.at){ txg(gs => { if(gs.at) return false; gs.at = api.now() + 3500; }); }
+    if(!g.at){ txg(gs => { if(gs.at) return false; gs.at = api.now() + 3000; }); }
     if(!this.built) this.build();
     if(g.at && !this.cd && !this.live){
       this.cd = setInterval(() => {
-        const left = g.at - api.now();
+        const left = localAt(g.at) - api.now();
         if(left <= 0){ clearInterval(this.cd); this.live = true; this.big.textContent = "GO"; tick(1320, .15); this.pad.classList.remove("off"); this.pad.textContent = "TAP"; return; }
         const s = Math.ceil(left / 1000); if(this.big.textContent !== String(s)){ this.big.textContent = s; tick(); }
       }, 50);
@@ -784,7 +784,7 @@ function realtime(def){
       const o = opp(me()), round = g.round || 1;
       this.g = g;
       if(this.round !== round){ this.round = round; this.start(g); }
-      if(!g.at) txg(gs => { if(gs.at) return false; gs.at = api.now() + 3500; });
+      if(!g.at) txg(gs => { if(gs.at) return false; gs.at = api.now() + 3000; });
       const res = g.res || {};
       if(this.survival && res[o] && !this.sent && this.started) this.finish(Math.max(this.t, res[o].t + 0.001));
       if(res.p1 && res.p2) txg((gs, cur) => {
@@ -814,7 +814,7 @@ function realtime(def){
       let last = null;
       const loop = (ts) => {
         this.raf = requestAnimationFrame(loop);
-        const gg = this.g, t = gg.at ? (api.now() - gg.at) / 1000 : -99;
+        const gg = this.g, t = gg.at ? (api.now() - localAt(gg.at)) / 1000 : -99;
         if(t >= 0 && !this.sent){
           this.started = true;
           const dt = last == null ? 0 : Math.min(0.05, (ts - last) / 1000);
@@ -844,6 +844,12 @@ function realtime(def){
       api.update(S.code, {[`g/res/${me()}`]: r}); tick(330, .2);
     }
   }, def);
+}
+const atMap = {};
+function localAt(at){
+  if(!at) return at;
+  if(!(at in atMap)){ const rem = at - api.now(); atMap[at] = (rem > -400 && rem < 4500) ? at : api.now() + 3000; }
+  return atMap[at];
 }
 const oppHits = (g) => g.hits?.[opp(me())] || 0;
 
@@ -1185,7 +1191,7 @@ GAMES.rps = {
     clearInterval(this.iv);
     const loop = () => {
       const gg = this.g; if(!gg.at) return;
-      const t = api.now() - gg.at;
+      const t = api.now() - localAt(gg.at);
       if(t < 0){ btns.forEach(b => b.disabled = true); cEl.textContent = "…"; return; }
       if(t < 3000){ btns.forEach(b => b.disabled = false); const s = String(3 - Math.floor(t / 1000)); if(s !== lastShown){ lastShown = s; cEl.textContent = s; tick(); } return; }
       btns.forEach(b => b.disabled = true);
@@ -1214,7 +1220,7 @@ function homeScreen(err = ""){
   app.innerHTML = "";
   const w = el(`<div>
     ${LOCAL ? `<div class="banner">Local test mode: open this page in a second tab to play against yourself.</div>` : ""}
-    <button class="gear" data-a="settings" aria-label="Settings">⚙</button>
+    <div class="topbar"><button class="gear" data-a="settings" aria-label="Settings">⚙</button></div>
     <div class="logo">Grudge<span>Match</span></div>
     <p class="tag">Eight mini games. Winner picks the next one.</p>
     <div class="card"><label for="nm">Your name</label><input id="nm" maxlength="14" autocomplete="off" value="${esc(localStorage.getItem("grudge_name") || "")}"></div>
@@ -1311,6 +1317,7 @@ function playing(){
     app.innerHTML = "";
     app.append(el(`<div>${scoreboard()}<div id="stage"></div></div>`));
     if(bothReady){ mounted.game = G; G.mount(document.getElementById("stage")); }
+    else if(["race", "car", "balloon", "cube", "rps"].includes(R.current)) api.syncClock(S.code, S.pid);
   } else app.querySelector(".score").outerHTML = scoreboard();
   const stage = document.getElementById("stage");
   if(!bothReady){
@@ -1318,9 +1325,14 @@ function playing(){
     const firstVerb = R.current === "shell" ? "hide" : "go";
     stage.innerHTML = "";
     const c = el(`<div><div class="status">Game ${R.gameNum}</div><div class="card"><h2>${G.title}</h2><p>${G.blurb}</p>
-      ${turnBased ? `<p><b>${g.first === p ? "You " + firstVerb : esc(nm(g.first)) + " " + firstVerb + "s"} first.</b></p>` : ""}
-      ${rdy[p] ? `<p class="muted">Waiting for ${esc(nm(opp(p)))}…</p>` : `<button class="btn">I'm ready</button>`}</div></div>`);
-    const b = c.querySelector("button");
+      ${turnBased ? `<p><b>${g.first === p ? "You " + firstVerb : esc(nm(g.first)) + " " + (firstVerb === "go" ? "goes" : "hides")} first.</b></p>` : ""}
+      ${rdy[p] ? `<p class="muted">Waiting for ${esc(nm(opp(p)))}…</p>` : `<button class="btn" data-a="ready">I'm ready</button>`}
+      ${R.pickedBy === p && !rdy[opp(p)] ? `<button class="btn ghost" data-a="back">← Back to picks</button>` : ""}</div></div>`);
+    const b = c.querySelector("[data-a=ready]"), back = c.querySelector("[data-a=back]");
+    if(back) back.onclick = () => api.tx(S.code, cur => {
+      const r = cur.g?.rdy || {}; if(cur.phase !== "playing" || cur.gameNum !== R.gameNum || cur.pickedBy !== p || r[opp(p)]) return false;
+      cur.phase = "result"; cur.gameNum--; cur.current = cur.result?.game; delete cur.g; delete cur.pickedBy;
+    });
     if(b) b.onclick = () => { audio(); if(["draw", "car", "cube"].includes(R.current)) requestMotion(); api.update(S.code, {[`g/rdy/${p}`]: true}); };
     stage.append(c);
     return;
@@ -1329,8 +1341,10 @@ function playing(){
 }
 
 function result(){
-  unmountGame();
   const r = R.result, p = me(), won = r.winner === p, used = arr(R.used);
+  const key = "res" + R.created + r.n + r.winner;
+  if(mounted.key === key) return;
+  unmountGame(); mounted.key = key;
   app.innerHTML = "";
   const w = el(`<div>${scoreboard()}
     <p class="verdict">${won ? "You won" : esc(nm(r.winner)) + " won"} ${esc(GAMES[r.game].title)}</p>
@@ -1342,7 +1356,7 @@ function result(){
     GAME_IDS.forEach(id => {
       const b = el(`<button class="pick">${esc(GAMES[id].title)}<small>${used.includes(id) ? "Already played" : esc(GAMES[id].short)}</small></button>`);
       b.disabled = used.includes(id);
-      b.onclick = () => api.tx(S.code, cur => { if(cur.phase !== "result" || arr(cur.used).includes(id)) return false; startGame(cur, id, cur.lastLoser); });
+      b.onclick = () => api.tx(S.code, cur => { if(cur.phase !== "result" || arr(cur.used).includes(id)) return false; startGame(cur, id, cur.lastLoser); cur.pickedBy = p; });
       picks.append(b);
     });
   }
@@ -1350,8 +1364,10 @@ function result(){
 }
 
 function over(){
-  unmountGame();
   const r = R.result, p = me(), won = r.winner === p, rm = R.rematch || {};
+  const key = "over" + R.created + r.n + JSON.stringify(rm);
+  if(mounted.key === key) return;
+  unmountGame(); mounted.key = key;
   app.innerHTML = "";
   const w = el(`<div>${scoreboard()}
     <p class="verdict">${won ? "You won the match" : esc(nm(r.winner)) + " won the match"}</p>
