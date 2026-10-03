@@ -252,7 +252,7 @@ function setPath(obj, path, val){
 }
 
 /* ---------------- backend ---------------- */
-const api = LOCAL ? (() => {
+const onlineApi = LOCAL ? (() => {
   const ch = ("BroadcastChannel" in window) ? new BroadcastChannel("grudge") : null;
   const subs = {};
   const key = c => "grudge_" + c;
@@ -303,6 +303,7 @@ const api = LOCAL ? (() => {
     now(){ return Date.now() + offset; }
   };
 })();
+let api = onlineApi;
 
 /* ---------------- audio ---------------- */
 let AC = null;
@@ -1600,10 +1601,264 @@ const GAME_IDS = Object.keys(GAMES);
 let mounted = {key: null, game: null};
 function unmountGame(){ if(mounted.game?.unmount) mounted.game.unmount(); mounted = {key: null, game: null}; }
 
+/* ---------------- Robo (offline bot opponent) ---------------- */
+function memBackend(){
+  const docs = {}, subs = {};
+  const fire = c => setTimeout(() => (subs[c] || []).forEach(f => f(docs[c] ? clone(docs[c]) : null)), 0);
+  return {
+    listen(c, cb){ (subs[c] ||= []).push(cb); fire(c); return () => { subs[c] = (subs[c] || []).filter(f => f !== cb); }; },
+    async get(c){ return docs[c] ? clone(docs[c]) : null; },
+    async update(c, patch){ const v = docs[c] || {}; for(const k in patch) setPath(v, k, patch[k] && typeof patch[k] === "object" ? clone(patch[k]) : patch[k]); docs[c] = prune(v) || {}; fire(c); },
+    async tx(c, mut){ if(!docs[c]) return false; const v = clone(docs[c]); if(mut(v) === false) return false; docs[c] = prune(v) || {}; fire(c); return true; },
+    now(){ return Date.now(); },
+    async syncClock(){}
+  };
+}
+const BOT = {iv: null, B: {}};
+const DIFFS = [["easy", "Easy"], ["medium", "Medium"], ["hard", "Hard"]];
+const lvl = () => ({easy: 0, medium: 1, hard: 2})[R?.bot] ?? 1;
+const gauss = () => { let u = 0; while(!u) u = Math.random(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * Math.random()); };
+const chance = p => Math.random() < p;
+function later(ms, f){ const B = BOT.B; const id = setTimeout(() => { if(BOT.B === B) f(); }, ms); (B.timers ||= []).push(id); }
+function botReset(){ const B = BOT.B; (B.timers || []).forEach(clearTimeout); if(B.unsub) B.unsub(); BOT.B = {}; }
+function botStart(){ clearInterval(BOT.iv); BOT.iv = setInterval(botDrive, 100); }
+function botStop(){ clearInterval(BOT.iv); BOT.iv = null; botReset(); }
+function botDrive(){
+  if(!S?.bot || !R) return;
+  if(R.phase !== "playing"){ if(BOT.B.n) botReset(); return; }
+  if(BOT.B.n !== R.gameNum){ botReset(); BOT.B.n = R.gameNum; }
+  const g = R.g || {}, B = BOT.B;
+  if(!g.rdy?.p2){ if(!B.rdyQ){ B.rdyQ = 1; later(600, () => api.update(S.code, {"g/rdy/p2": true})); } return; }
+  if(!g.rdy?.p1) return;
+  BOTS[R.current]?.(g, B);
+}
+const P2 = (k, v) => api.update(S.code, {[k]: v});
+function tttChoose(a, c){
+  const empty = [...Array(9).keys()].filter(i => !a.includes(i) && !c.includes(i));
+  const wins = (m, i) => { const x = m.concat(i); if(x.length > 3) x.shift(); return LINES.some(l => l.every(y => x.includes(y))); };
+  if(!empty.length) return null;
+  if(chance([0.6, 0.25, 0.08][lvl()])) return empty[rnd(empty.length)];
+  for(const i of empty) if(wins(c, i)) return i;
+  for(const i of empty) if(wins(a, i)) return i;
+  for(const i of [4, 0, 2, 6, 8]) if(empty.includes(i) && chance(.7)) return i;
+  return empty[rnd(empty.length)];
+}
+function botSeek(n, mine, target, exact, useP){
+  const band = d => exact ? d : (d === 0 ? 0 : d === 1 ? 1 : d === 2 ? 2 : 3);
+  const all = [...Array(n * n).keys()].filter(i => !mine.includes(i));
+  const cons = all.filter(i => mine.every(x => band(cheb(x, i, n)) === band(cheb(x, target, n))));
+  const pool = chance(useP) && cons.length ? cons : all;
+  return pool[rnd(pool.length)];
+}
+function botSurvive(g, B, base, sd, maxHits){
+  const key = g.round || 1;
+  if(B.rk !== key){ B.rk = key; B.sent = 0; B.T = Math.max(3, base + gauss() * sd); B.h = 0; }
+  if(!g.at || B.sent) return;
+  const el = (api.now() - localAt(g.at)) / 1000; if(el < 0) return;
+  const hits = Math.min(maxHits, Math.floor(el / B.T * maxHits));
+  if(hits !== B.h){ B.h = hits; P2("g/hits/p2", hits); }
+  const pr = g.res?.p1;
+  if(pr){ B.sent = 1; P2("g/res/p2", {t: Math.round(Math.max(el, pr.t + 0.5) * 1000) / 1000}); return; }
+  if(el >= B.T){ B.sent = 1; P2("g/hits/p2", maxHits); P2("g/res/p2", {t: Math.round(el * 1000) / 1000}); }
+}
+const BOTS = {
+  draw(g, B){
+    const shot = g.shot || 1;
+    if(g.ready?.p2 !== shot && B.rq !== shot){ B.rq = shot; later(1000, () => P2("g/ready/p2", shot)); }
+    if(g.go && g.go.shot === shot && B.fired !== shot){
+      B.fired = shot; const L = lvl(), foul = chance([.08, .05, .02][L]);
+      const rt = Math.max(150, Math.round([450, 330, 240][L] + gauss() * [150, 90, 50][L]));
+      later(foul ? g.go.delay * Math.random() : g.go.delay + rt, () => P2("g/res/p2", foul ? {shot, foul: 1} : {shot, rt}));
+    }
+  },
+  ttt(g, B){
+    if(g.turn !== "p2") return; const k = JSON.stringify(g.marks || {}); if(B.tk === k) return; B.tk = k;
+    later(600 + Math.random() * 700, () => txg((gs, cur) => {
+      if(gs.turn !== "p2") return false; gs.marks ||= {};
+      const a = arr(gs.marks.p1), c = arr(gs.marks.p2), i = tttChoose(a, c); if(i == null) return false;
+      c.push(i); if(c.length > 3) c.shift(); gs.marks.p1 = a; gs.marks.p2 = c;
+      if(LINES.some(l => l.every(x => c.includes(x)))){ endIn(cur, "p2", "Robo got three in a row"); return; }
+      gs.turn = "p1";
+    }));
+  },
+  race(g, B){
+    if(!g.at) return; const el = (api.now() - localAt(g.at)) / 1000; if(el < 0) return;
+    B.rate ||= Math.max(3, [5, 7, 9.3][lvl()] + gauss() * .8);
+    const n = Math.min(RACE_TARGET, Math.floor(el * B.rate));
+    if(n !== B.last && (!B.lt || performance.now() - B.lt > 330 || n >= RACE_TARGET)){ B.last = n; B.lt = performance.now(); P2("g/taps/p2", n); }
+    if(n >= RACE_TARGET && !B.done){ B.done = 1; txg((gs, cur) => { endIn(cur, "p2", "Robo crossed the line first"); }); }
+  },
+  pig(g, B){
+    if(g.turn !== "p2") return; const k = JSON.stringify([g.pot, g.last?.id, g.scores]); if(B.pk === k) return; B.pk = k;
+    later(750 + Math.random() * 450, () => {
+      const s = R.g; if(!s || s.turn !== "p2") return;
+      const pot = s.pot || 0, my = s.scores?.p2 || 0, op = s.scores?.p1 || 0, L = lvl();
+      let hold = false;
+      if(pot > 0){ if(my + pot >= PIG_GOAL) hold = true; else if(L === 0) hold = chance(.3); else if(L === 1) hold = pot >= 15; else hold = pot >= (op >= 22 ? 26 : op - my > 10 ? 23 : 20); }
+      if(hold) txg((gs, cur) => { if(gs.turn !== "p2" || !(gs.pot > 0)) return false; gs.scores ||= {}; gs.scores.p2 = (gs.scores.p2 || 0) + gs.pot; gs.pot = 0;
+        if(gs.scores.p2 >= PIG_GOAL){ endIn(cur, "p2", `Robo banked ${gs.scores.p2}`); return; } gs.turn = "p1"; delete gs.last; });
+      else txg(gs => { if(gs.turn !== "p2") return false; const r = 1 + rnd(6); gs.last = {v: r, by: "p2", id: Math.random().toString(36).slice(2)}; if(r === 1){ gs.pot = 0; gs.turn = "p1"; } else gs.pot = (gs.pot || 0) + r; });
+    });
+  },
+  flash(g, B){
+    if(B.seq === g.seq) return; B.seq = g.seq;
+    const n = arr(g.pat).length, lv = g.level || 1, L0 = [2.5, 4.5, 7][lvl()], ok = !chance(1 / (1 + Math.exp(-(lv - L0) * 1.2)));
+    later(2100 + n * 300 + 600 + n * 450 * Math.random(), () => P2("g/res/p2", {seq: g.seq, ok: ok ? 1 : 0}));
+  },
+  clock(g, B){
+    if(B.round === g.round) return; B.round = g.round;
+    const t = Math.max(1500, Math.round(5000 + gauss() * [600, 300, 140][lvl()]));
+    later(2400 + t, () => P2("g/res/p2", {round: g.round, t}));
+  },
+  hide(g, B){
+    if(g.spot?.p2 == null){ if(!B.hid){ B.hid = 1; later(800, () => P2("g/spot/p2", rnd(HS_N * HS_N))); } return; }
+    if(g.spot?.p1 == null || g.turn !== "p2") return;
+    const k = arr(g.guesses?.p2).length + ":" + arr(g.guesses?.p1).length + ":" + (g.max || 3); if(B.hk === k) return; B.hk = k;
+    later(900 + Math.random() * 600, () => {
+      const s = R.g; if(!s || s.turn !== "p2") return;
+      const i = botSeek(HS_N, arr(s.guesses?.p2), s.spot.p1, false, [0.2, 0.6, 1][lvl()]);
+      txg((gs, cur) => {
+        if(gs.turn !== "p2") return false; gs.guesses ||= {};
+        const mg = arr(gs.guesses.p2), tg = arr(gs.guesses.p1), mx = gs.max || 3;
+        if(mg.includes(i) || mg.length >= mx) return false;
+        mg.push(i); gs.guesses.p2 = mg;
+        if(i === gs.spot.p1){ endIn(cur, "p2", `Robo found ${nm("p1")} in ${mg.length} ${mg.length === 1 ? "guess" : "guesses"}`); return; }
+        if(mg.length >= mx && tg.length >= mx){
+          const best = (gl, t) => Math.min(...gl.map(x => cheb(x, t, HS_N)));
+          const bm = best(mg, gs.spot.p1), bt = best(tg, gs.spot.p2);
+          if(bm !== bt){ const w = bm < bt ? "p2" : "p1"; endIn(cur, w, `Nobody found anyone. ${nm(w)} got closest.`); return; }
+          gs.max = mx + 1;
+        }
+        gs.turn = "p1";
+      });
+    });
+  },
+  chest(g, B){
+    if(g.spot?.p2 == null){ if(!B.hid){ B.hid = 1; later(800, () => P2("g/spot/p2", rnd(CH_N * CH_N))); } return; }
+    if(g.spot?.p1 == null || g.turn !== "p2") return;
+    const k = arr(g.taps?.p2).length + ":" + arr(g.taps?.p1).length; if(B.ck === k) return; B.ck = k;
+    later(900 + Math.random() * 600, () => {
+      const s = R.g; if(!s || s.turn !== "p2") return;
+      const i = botSeek(CH_N, arr(s.taps?.p2), s.spot.p1, true, [0.3, 0.7, 1][lvl()]);
+      txg((gs, cur) => {
+        if(gs.turn !== "p2") return false; gs.taps ||= {};
+        const mt = arr(gs.taps.p2); if(mt.includes(i)) return false; mt.push(i); gs.taps.p2 = mt;
+        if(i === gs.spot.p1){ endIn(cur, "p2", `Robo found the chest in ${mt.length} digs`); return; }
+        gs.turn = "p1";
+      });
+    });
+  },
+  car(g, B){
+    const key = g.round || 1; if(B.rk !== key){ B.rk = key; B.sent = 0; }
+    if(!g.at || B.sent) return;
+    if((api.now() - localAt(g.at)) / 1000 >= 30){ B.sent = 1; const L = lvl(); P2("g/res/p2", {t: 30, s: Math.round(clamp([45, 65, 80][L] + gauss() * [10, 8, 6][L], 5, 99) * 10) / 10}); }
+  },
+  balloon(g, B){ const L = lvl(); botSurvive(g, B, [12, 25, 45][L], [5, 8, 12][L], 3); },
+  cube(g, B){ const L = lvl(), lives = cfg().crash || 1; botSurvive(g, B, [8, 18, 35][L] * (lives > 1 ? 1.6 : 1), [4, 6, 10][L], lives); },
+  shell(g, B){
+    const k = g.round + g.phase;
+    if(g.hider === "p2"){
+      if(g.phase === "start" && B.k !== k){ B.k = k; later(1800, () => P2("g/phase", "shuffle")); }
+      if(g.phase === "shuffle" && B.k !== k){
+        B.k = k; const secs = cfg().shellTime, n = [3, 6, 10][lvl()], moves = [], span = (secs * 1000 - 800) / (n + 1);
+        for(let j = 0; j < n; j++){ const f = rnd(3); let to = rnd(2); if(to >= f) to++; const t = Math.round((j + 1) * span + (Math.random() - .5) * span * .5); moves.push({f, to, t});
+          later(t, () => { if(cfg().shellView === "live") P2("g/moves", moves.slice(0, j + 1)); }); }
+        later(secs * 1000, () => api.update(S.code, {"g/moves": moves, "g/phase": "guess"}));
+      }
+    } else if(g.phase === "guess" && B.k !== k){
+      B.k = k; const round = g.round;
+      later(1500 + arr(g.moves).length * 700, () => txg((gs, cur) => {
+        if(gs.phase !== "guess" || gs.round !== round) return false;
+        const fin = GAMES.shell.replayOrder(arr(gs.moves)), ballSlot = fin.indexOf(gs.ball), slot = chance([.4, .6, .8][lvl()]) ? ballSlot : rnd(3);
+        const guesser = opp(gs.hider), correct = slot === ballSlot, w = correct ? guesser : gs.hider;
+        gs.wins ||= {}; gs.wins[w] = (gs.wins[w] || 0) + 1; gs.last = {round: gs.round, correct, guesser};
+        if(gs.wins[w] >= 2){ endIn(cur, w, correct ? `${nm(guesser)} found the ball` : `${nm(gs.hider)} fooled ${nm(guesser)}`); return; }
+        gs.round++; gs.hider = opp(gs.hider); gs.ball = rnd(3); gs.phase = "start"; delete gs.moves;
+      }));
+    }
+  },
+  rps(g, B){
+    if(!g.at || B.rn === g.n) return; if(api.now() < localAt(g.at)) return; B.rn = g.n;
+    const hist = B.hist ||= []; if(g.last && g.last.n === g.n - 1 && g.last.p1 && g.last.p1 !== "x") hist.push(g.last.p1);
+    let c = "rps"[rnd(3)];
+    if(lvl() === 2 && hist.length >= 3 && chance(.6)){ const cnt = {r: 0, p: 0, s: 0}; hist.slice(-6).forEach(x => cnt[x]++); const fav = Object.keys(cnt).sort((a, b) => cnt[b] - cnt[a])[0]; c = {r: "p", p: "s", s: "r"}[fav]; }
+    later(400 + Math.random() * 1800, () => P2("g/res/p2", {n: g.n, c}));
+  },
+  brawl(g, B){
+    const cols = g.colors || {};
+    if(!cols.p2){ if(cols.p1 && !B.colQ){ B.colQ = 1; later(800, () => txg(gs => { gs.colors ||= {}; if(gs.colors.p2) return false; const free = BB_COLORS.map(c => c[1]).filter(c => c !== gs.colors.p1); gs.colors.p2 = free[rnd(free.length)]; })); } return; }
+    const myKey = `${S.code}_bb_p2`, opKey = `${S.code}_bb_p1`;
+    if(!B.bb){ B.bb = {round: null, sdn: null, dmg: 0, blk: false, blkUntil: 0, pid: 0, recent: [], seen: 0, next: 0, sta: 100, finK: null, ko: false}; B.unsub = api.listen(opKey, v => botBrawlOpp(v)); }
+    const s = B.bb;
+    if(s.round !== g.round || s.sdn !== (g.sdn || 0)){ s.round = g.round; s.sdn = g.sdn || 0; s.dmg = 0; s.blk = false; s.recent = []; s.ko = false; s.sta = 100; s.next = 0; api.update(myKey, {round: g.round, dmg: 0, blk: false, stun: 0, punches: [], pid: s.pid}); }
+    if(!g.at) return;
+    const dur = (g.sdn ? BB.sd : BB.round) * 1000, now = api.now(), t = now - localAt(g.at), live = t >= 0 && t < dur && !s.ko && !((B.oppDmg || 0) >= 100);
+    if(s.blk && now > s.blkUntil){ s.blk = false; api.update(myKey, {blk: false}); }
+    if(live && !s.blk && now >= s.next && s.sta >= BB.cost){
+      s.sta -= BB.cost; s.pid++; const pu = {id: s.pid, arm: chance(.5) ? "l" : "r", at: Math.round(now + BB.windup)};
+      s.recent = s.recent.concat(pu).slice(-4); api.update(myKey, {punches: s.recent, pid: s.pid});
+      s.next = now + [1400, 1000, 750][lvl()] * (0.7 + Math.random() * 0.6);
+    }
+    if(!s.blk) s.sta = Math.min(100, s.sta + BB.regen * 0.1);
+    if(t >= dur && !s.ko && !((B.oppDmg || 0) >= 100)){ const k = g.round + ":" + (g.sdn || 0); if(s.finK !== k){ s.finK = k; P2("g/fin/p2", {k, dmg: s.dmg}); } }
+  }
+};
+function botBrawlOpp(v){
+  const B = BOT.B, s = B?.bb; if(!s || !v || v.round !== s.round) return;
+  B.oppDmg = v.dmg || 0;
+  arr(v.punches).forEach(pu => {
+    if(pu.id <= s.seen) return; s.seen = pu.id; const lead = pu.at - api.now();
+    if(chance([.15, .4, .6][lvl()]) && s.sta > 20) later(Math.max(0, lead - 200 - Math.random() * 150), () => { s.blk = true; s.blkUntil = api.now() + 700; s.sta -= 20; api.update(`${S.code}_bb_p2`, {blk: true}); });
+    later(Math.max(0, lead), () => {
+      const g = R?.g; if(!g?.at) return; const dur = (g.sdn ? BB.sd : BB.round) * 1000, t = api.now() - localAt(g.at);
+      if(t < 0 || t >= dur || s.ko || s.blk) return;
+      s.dmg = Math.min(100, s.dmg + 8 + rnd(6)); api.update(`${S.code}_bb_p2`, {dmg: s.dmg});
+      if(s.dmg >= 100 && !s.ko){ s.ko = true; const r = s.round; txg((gs, cur) => { if(gs.round !== r || gs.last?.round === r) return false; GAMES.brawl.endRound(gs, cur, "p1", "KO"); }); }
+    });
+  });
+}
+function startRobo(name, diff){
+  botStop(); if(unsub) unsub(); unsub = null;
+  api = memBackend();
+  const code = "ROBO";
+  S = {code, pid: "p1", name, bot: true};
+  api.update(code, {created: Date.now(), bestOf: 1, bot: diff, cfg: getCfg(), phase: "botpick", "players/p1": {name}, "players/p2": {name: "Robo"}, score: {p1: 0, p2: 0}}).then(() => { connect(); botStart(); });
+}
+function botpick(){
+  const key = "botpick" + R.created + (R.gameNum || 0);
+  if(mounted.key === key) return;
+  unmountGame(); mounted.key = key;
+  app.innerHTML = "";
+  const w = el(`<div>${scoreboard()}<div class="status mine" style="text-align:left">Pick a game</div><div class="picks"></div><button class="btn ghost" data-a="leave">Leave</button></div>`);
+  const picks = w.querySelector(".picks");
+  GAME_IDS.forEach(id => {
+    const b = el(`<button class="pick">${esc(GAMES[id].title)}<small>${esc(GAMES[id].short)}</small></button>`);
+    b.onclick = () => api.tx(S.code, cur => { if(cur.phase !== "botpick") return false; startGame(cur, id, rnd(2) ? "p1" : "p2"); cur.pickedBy = "p1"; });
+    picks.append(b);
+  });
+  w.querySelector("[data-a=leave]").onclick = leave;
+  app.append(w);
+}
+function botOver(){
+  const r = R.result, won = r.winner === "p1";
+  const key = "botover" + R.created + r.n;
+  if(mounted.key === key) return;
+  unmountGame(); mounted.key = key;
+  app.innerHTML = "";
+  const w = el(`<div>${scoreboard()}
+    <p class="verdict">${won ? "You beat Robo at" : "Robo won"} ${esc(GAMES[r.game].title)}</p>
+    <div class="slam ${won ? "" : "lose"}">${esc(msgFor(S.code + R.created + "g" + r.n + r.winner, won ? WIN_MSGS : LOSE_MSGS))}</div>
+    <p class="detail">${esc(r.detail)}</p>
+    <button class="btn" data-a="again">Pick another game</button><button class="btn ghost" data-a="leave">Leave</button></div>`);
+  w.querySelector("[data-a=again]").onclick = () => api.tx(S.code, cur => { if(cur.phase !== "over") return false; cur.phase = "botpick"; });
+  w.querySelector("[data-a=leave]").onclick = leave;
+  app.append(w);
+}
+
 function scoreboard(){
   const sc = R.score || {};
   return `<div class="score"><div class="pl c1">${esc(nm("p1"))}${me() === "p1" ? " (you)" : ""}</div>
-    <div class="nums"><b class="c1">${sc.p1 || 0}</b><span class="vs">best of ${R.bestOf}</span><b class="c2">${sc.p2 || 0}</b></div>
+    <div class="nums"><b class="c1">${sc.p1 || 0}</b><span class="vs">${R.bot ? "vs Robo · " + (DIFFS.find(d => d[0] === R.bot)?.[1] || "") : "best of " + R.bestOf}</span><b class="c2">${sc.p2 || 0}</b></div>
     <div class="pl r c2">${esc(nm("p2"))}${me() === "p2" ? " (you)" : ""}</div></div>`;
 }
 
@@ -1619,12 +1874,17 @@ function homeScreen(err = ""){
     <div class="card"><label for="nm">Your name</label><input id="nm" maxlength="14" autocomplete="off" value="${esc(localStorage.getItem("grudge_name") || "")}"></div>
     <div class="card"><h2>Start a match</h2><div class="seg" role="group"><button aria-pressed="false" data-b="1">Best of 1</button><button aria-pressed="true" data-b="3">Best of 3</button><button aria-pressed="false" data-b="5">Best of 5</button><button aria-pressed="false" data-b="7">Best of 7</button></div>
       <button class="btn" data-a="create">Create match</button></div>
+    <div class="card"><h2>Play Robo</h2><div class="seg" role="group">${DIFFS.map(([k, t]) => `<button data-d="${k}" aria-pressed="${k === "medium"}">${t}</button>`).join("")}</div>
+      <button class="btn" data-a="robo">Play Robo</button></div>
     <div class="card"><h2>Join a match</h2><label for="cd">Match code</label><input id="cd" maxlength="4" autocomplete="off" style="text-transform:uppercase;letter-spacing:.2em" value="${esc(INVITE)}">
       <button class="btn alt" data-a="join">Join match</button><div class="err">${esc(err)}</div></div></div>`);
   app.append(w);
   const name = () => { const v = w.querySelector("#nm").value.trim(); if(v) localStorage.setItem("grudge_name", v); return v; };
   const errEl = w.querySelector(".err");
   w.querySelector("[data-a=settings]").onclick = settingsScreen;
+  let diff = "medium";
+  w.querySelectorAll("[data-d]").forEach(b => b.onclick = () => { diff = b.dataset.d; w.querySelectorAll("[data-d]").forEach(x => x.setAttribute("aria-pressed", x === b)); });
+  w.querySelector("[data-a=robo]").onclick = () => { const n = name() || "You"; audio(); startRobo(n, diff); };
   w.querySelectorAll("[data-b]").forEach(b => b.onclick = () => { bestOf = +b.dataset.b; w.querySelectorAll("[data-b]").forEach(x => x.setAttribute("aria-pressed", x === b)); });
   w.querySelector("[data-a=create]").onclick = async () => {
     const n = name(); if(!n){ errEl.textContent = "Enter your name first."; return; }
@@ -1674,7 +1934,7 @@ function settingsScreen(){
   app.append(w);
 }
 
-function leave(){ if(unsub) unsub(); unsub = null; S = null; STORE.removeItem("grudge_s"); R = null; homeScreen(); }
+function leave(){ botStop(); if(unsub) unsub(); unsub = null; api = onlineApi; S = null; STORE.removeItem("grudge_s"); R = null; homeScreen(); }
 
 function connect(){
   if(unsub) unsub();
@@ -1728,7 +1988,7 @@ function playing(){
     const b = c.querySelector("[data-a=ready]"), back = c.querySelector("[data-a=back]");
     if(back) back.onclick = () => api.tx(S.code, cur => {
       const r = cur.g?.rdy || {}; if(cur.phase !== "playing" || cur.gameNum !== R.gameNum || cur.pickedBy !== p || (r.p1 && r.p2)) return false;
-      cur.phase = cur.bestOf === 1 ? "propose" : "result"; cur.gameNum--; cur.current = cur.result?.game; delete cur.g; delete cur.pickedBy;
+      cur.phase = cur.bot ? "botpick" : cur.bestOf === 1 ? "propose" : "result"; cur.gameNum--; cur.current = cur.result?.game; delete cur.g; delete cur.pickedBy;
     });
     if(b) b.onclick = () => { audio(); if(["draw", "car", "cube"].includes(R.current)) requestMotion(); api.update(S.code, {[`g/rdy/${p}`]: true}); };
     stage.append(c);
@@ -1788,6 +2048,7 @@ function result(){
 }
 
 function over(){
+  if(R.bot) return botOver();
   const r = R.result, p = me(), won = r.winner === p, rm = R.rematch || {};
   const key = "over" + R.created + r.n + JSON.stringify(rm);
   if(mounted.key === key) return;
@@ -1812,7 +2073,8 @@ function over(){
 function render(){
   if(!S || !R) return;
   if(!R.players?.[S.pid]){ leave(); return; }
-  ({lobby, playing, result, over, propose, approve})[R.phase]?.();
+  ({lobby, playing, result, over, propose, approve, botpick})[R.phase]?.();
+  if(S?.bot) botDrive();
 }
 
 if(S) connect(); else homeScreen();
