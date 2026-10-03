@@ -66,9 +66,14 @@ input:focus-visible,button:focus-visible{outline:3px solid var(--pink);outline-o
 .bb-mid{text-align:center;font-size:11px;opacity:.9}
 .bb-time{font-family:var(--display);font-size:28px;line-height:1}
 .bb-big{position:absolute;left:0;right:0;top:38%;text-align:center;font-family:var(--display);font-size:clamp(34px,11vw,60px);color:var(--sun);text-shadow:4px 4px 0 var(--ink);pointer-events:none;transition:opacity .2s;padding:0 10px}
-.bb-sta{position:absolute;left:10px;right:10px;bottom:30px;color:#fff;font-weight:800;font-size:12px;pointer-events:none}
+.bb-sta{position:absolute;left:120px;right:120px;bottom:22px;color:#fff;font-weight:800;font-size:12px;pointer-events:none}
 .bb-sta .bb-bar i{background:var(--good)}
-.bb-touch{position:absolute;left:0;right:0;bottom:6px;display:flex;justify-content:space-between;padding:0 10px;color:rgba(255,255,255,.45);font-size:11px;font-weight:800;pointer-events:none}
+.bb-gl{position:absolute;bottom:12px;width:96px;height:96px;border-radius:50%;border:3px solid rgba(255,255,255,.75);background:rgba(22,26,74,.5);display:flex;align-items:center;justify-content:center;pointer-events:none;transition:transform .08s,background .08s}
+.bb-gl.l{left:12px}.bb-gl.r{right:12px}.bb-gl.on{background:rgba(255,201,60,.9);transform:scale(.9)}
+.bb-gl svg{width:60px;height:60px}.bb-gl.r svg{transform:scaleX(-1)}
+.bb-blkl{position:absolute;left:0;right:0;bottom:62px;text-align:center;color:rgba(255,255,255,.7);font:800 12px var(--body);pointer-events:none}
+.bb-rep{position:absolute;top:64px;left:12px;background:var(--bad);color:#fff;font:800 13px var(--body);padding:3px 10px;border-radius:6px;opacity:0;transition:opacity .2s;pointer-events:none}
+.bb-nm{width:100%;margin:6px 0 12px}
 .err{color:var(--bad);font-weight:800;min-height:1.4em;margin-top:8px}
 .banner{background:var(--sun);border:3px solid var(--ink);border-radius:12px;padding:8px 12px;font-size:14px;margin-bottom:14px}
 .code{font-family:var(--display);font-size:64px;letter-spacing:.08em;text-align:center;margin:8px 0}
@@ -315,6 +320,7 @@ function audio(){
 let audioUnlocked = false;
 function unlockAudio(){
   const ac = audio();
+  if(!speechWarm && "speechSynthesis" in window){ speechWarm = true; try{ const u = new SpeechSynthesisUtterance(" "); u.volume = 0; speechSynthesis.speak(u); }catch{} }
   if(!audioUnlocked){ const b = ac.createBuffer(1, 1, 22050), s = ac.createBufferSource(); s.buffer = b; s.connect(ac.destination); s.start(0); }
   if(ac.state === "running") audioUnlocked = true;
 }
@@ -862,7 +868,7 @@ function realtime(def){
 const atMap = {};
 function localAt(at){
   if(!at) return at;
-  if(!(at in atMap)){ const rem = at - api.now(); atMap[at] = (rem > -400 && rem < 4500) ? at : api.now() + 3000; }
+  if(!(at in atMap)){ const rem = at - api.now(); atMap[at] = (rem > -400 && rem < 12000) ? at : api.now() + 3000; }
   return atMap[at];
 }
 const oppHits = (g) => g.hits?.[opp(me())] || 0;
@@ -1225,7 +1231,7 @@ function loadThree(){
   });
 }
 const BB_COLORS = [["Red", "#E5412F"], ["Blue", "#2B6BE0"], ["Yellow", "#FFC93C"], ["Pink", "#FF5C9E"], ["Green", "#36C98A"], ["Orange", "#F28C28"], ["Purple", "#8B5CF6"], ["Silver", "#B8BEC9"]];
-const BB = {windup: 450, cool: 380, cost: 12, blockDrain: 32, regen: 24, stun: 2000, round: 60, sd: 20};
+const BB = {windup: 450, cool: 380, cost: 8, blockDrain: 18, regen: 30, stun: 2000, round: 60, sd: 20};
 
 /* sounds */
 function bbBell(n = 1){ try{ const ac = audio(), t0 = ac.currentTime;
@@ -1280,11 +1286,29 @@ function bbCrowd(){
 function bbTextTex(T, text, w, h, bg, fg, font){ const c = document.createElement("canvas"); c.width = w; c.height = h; const x = c.getContext("2d");
   x.fillStyle = bg; x.fillRect(0, 0, w, h); x.fillStyle = fg; x.font = font; x.textAlign = "center"; x.textBaseline = "middle"; x.fillText(text, w / 2, h / 2);
   const t = new T.CanvasTexture(c); t.anisotropy = 4; return t; }
+const BB_GLOVE = `<svg viewBox="0 0 64 64"><path d="M14 30c0-12 8-20 20-20h6c9 0 14 7 14 16v8c0 10-7 18-17 18H27c-7 0-13-5-13-12z" fill="#E5412F" stroke="#161A4A" stroke-width="3"/><path d="M14 34c-5 0-8 3-8 8s4 8 9 8h4" fill="#E5412F" stroke="#161A4A" stroke-width="3"/><rect x="22" y="50" width="22" height="10" rx="3" fill="#FFF7E6" stroke="#161A4A" stroke-width="3"/><path d="M26 22c4-4 10-4 14 0" stroke="#fff" stroke-width="3" fill="none" opacity=".6"/></svg>`;
+const ROBO_NAMES = ["Rustbucket", "Clankenstein", "Sir Bolts-a-Lot", "Gearhead", "Tin Fury", "Scrap Daddy", "Captain Cog", "Torque Norris"];
+let speechWarm = false;
+function bbSay(text){ try{ if(cfg().announcer === false || !("speechSynthesis" in window)) return; const u = new SpeechSynthesisUtterance(text); u.rate = .95; u.pitch = .75; u.volume = 1; speechSynthesis.speak(u); }catch{} }
+function bbSnap(R){ return [R.upper.rotation.x, R.upper.rotation.z, R.arms.l.sh.rotation.x, R.arms.l.sh.rotation.y, R.arms.l.el.rotation.x, R.arms.r.sh.rotation.x, R.arms.r.sh.rotation.y, R.arms.r.el.rotation.x, R.head.rotation.x, R.head.rotation.z, R.head.position.y, R.neck.scale.y, R.visorMat.emissiveIntensity]; }
+function bbApply(R, a){ R.upper.rotation.x = a[0]; R.upper.rotation.z = a[1]; R.arms.l.sh.rotation.x = a[2]; R.arms.l.sh.rotation.y = a[3]; R.arms.l.el.rotation.x = a[4]; R.arms.r.sh.rotation.x = a[5]; R.arms.r.sh.rotation.y = a[6]; R.arms.r.el.rotation.x = a[7]; R.head.rotation.x = a[8]; R.head.rotation.z = a[9]; R.head.position.y = a[10]; R.neck.scale.y = a[11]; R.visorMat.emissiveIntensity = a[12]; }
+function bbEnv(T, renderer){
+  const es = new T.Scene();
+  es.add(new T.Mesh(new T.SphereGeometry(20, 24, 12), new T.MeshBasicMaterial({color: 0x0b0d22, side: T.BackSide})));
+  const c = document.createElement("canvas"); c.width = 1024; c.height = 64; const x = c.getContext("2d"); x.fillStyle = "#151830"; x.fillRect(0, 0, 1024, 64);
+  for(let i = 0; i < 900; i++){ x.fillStyle = ["#E5412F", "#2B6BE0", "#FFC93C", "#FF5C9E", "#ffffff", "#36C98A"][i % 6]; x.globalAlpha = .5 + Math.random() * .5; x.fillRect(Math.random() * 1024, Math.random() * 64, 3, 3); }
+  const crowdTex = new T.CanvasTexture(c); crowdTex.wrapS = T.RepeatWrapping;
+  const band = new T.Mesh(new T.CylinderGeometry(9, 9, 5, 32, 1, true), new T.MeshBasicMaterial({map: crowdTex, side: T.BackSide})); band.position.y = 1.5; es.add(band);
+  for(let i = -2; i <= 2; i++) [-3, 3].forEach(z => { const l = new T.Mesh(new T.BoxGeometry(.8, .3, .8), new T.MeshBasicMaterial({color: 0xfff3dd})); l.position.set(i * 1.4, 8, z); es.add(l); });
+  [[-8, 3, 0xff5c9e], [8, 3, 0x5c7cff], [0, 3, 0xffc93c]].forEach(([px, py, col], k) => { const p = new T.Mesh(new T.PlaneGeometry(4, 2), new T.MeshBasicMaterial({color: col, side: T.DoubleSide})); p.position.set(px, py, k === 2 ? 8 : 0); p.lookAt(0, 1, 0); es.add(p); });
+  const floor = new T.Mesh(new T.PlaneGeometry(40, 40), new T.MeshBasicMaterial({color: 0x1e2aa8})); floor.rotation.x = -Math.PI / 2; floor.position.y = -1; es.add(floor);
+  const pm = new T.PMREMGenerator(renderer); const tex = pm.fromScene(es, .03).texture; pm.dispose(); return tex;
+}
 function bbRobot(T, color){
   const root = new T.Group(), upper = new T.Group(); root.add(upper);
-  const metal = new T.MeshStandardMaterial({color: new T.Color(color), metalness: .55, roughness: .32});
+  const metal = new T.MeshStandardMaterial({color: new T.Color(color), metalness: .8, roughness: .22, envMapIntensity: 1.3});
   const dark = new T.MeshStandardMaterial({color: 0x2a2d3a, metalness: .7, roughness: .45});
-  const chrome = new T.MeshStandardMaterial({color: 0xd5d9e2, metalness: .95, roughness: .16});
+  const chrome = new T.MeshStandardMaterial({color: 0xd5d9e2, metalness: 1, roughness: .1, envMapIntensity: 1.5});
   const visorMat = new T.MeshStandardMaterial({color: 0x111111, emissive: new T.Color(0xff3322), emissiveIntensity: 1.6});
   const M = (geo, mat, x, y, z, parent = root) => { const m = new T.Mesh(geo, mat); m.position.set(x, y, z); m.castShadow = true; parent.add(m); return m; };
   M(new T.BoxGeometry(1.05, .12, .85), dark, 0, .06, 0);
@@ -1319,7 +1343,15 @@ function bbRobot(T, color){
   [-1, 1].forEach(s => M(new T.CylinderGeometry(.06, .06, .06, 12), chrome, s * .25, .18, 0, head).rotation.z = Math.PI / 2);
   M(new T.CylinderGeometry(.012, .012, .2, 6), chrome, .12, .45, 0, head);
   const tip = M(new T.SphereGeometry(.035, 10, 8), visorMat, .12, .56, 0, head);
-  return {root, upper, arms, neck, spring, head, visorMat, metal, pose: {l: 0, r: 0, blk: 0}, pop: 0, popV: 0, shake: 0};
+  const marks = [], dentMat = new T.MeshStandardMaterial({color: 0x15151c, metalness: .6, roughness: .75}), scrMat = new T.MeshStandardMaterial({color: 0xeef0f4, metalness: 1, roughness: .3});
+  for(let i = 0; i < 16; i++){
+    const onHead = i % 3 === 1, scratch = i % 2 === 0, parent = onHead ? head : upper;
+    const m = scratch ? new T.Mesh(new T.BoxGeometry(.1 + Math.random() * .14, .009, .004), scrMat) : new T.Mesh(new T.SphereGeometry(.03 + Math.random() * .025, 10, 8), dentMat);
+    if(!scratch) m.scale.z = .25;
+    if(onHead) m.position.set((Math.random() - .5) * .36, .04 + Math.random() * .28, .222); else m.position.set((Math.random() - .5) * .72, 1.14 + Math.random() * .6, .295);
+    m.rotation.z = Math.random() * Math.PI; m.visible = false; parent.add(m); marks.push(m);
+  }
+  return {root, upper, arms, neck, spring, head, visorMat, metal, marks, pose: {l: 0, r: 0, blk: 0}, pop: 0, popV: 0, shake: 0};
 }
 function bbPose(R, t, now, state){
   // state: {punches:{l:t0,r:t0}, blk:bool, stun:bool, ko:bool}
@@ -1342,6 +1374,7 @@ function bbPose(R, t, now, state){
   // KO spring pop
   const target = state.ko ? 1 : 0; const acc = (target - R.pop) * 60 - R.popV * 4.5; R.popV += acc * 0.016; R.pop += R.popV * 0.016;
   const pp = Math.max(-.05, R.pop); R.neck.scale.y = Math.max(.75, 1 + pp * 4.5); R.head.position.y = 2.03 + pp * .9;
+  const nmk = Math.floor(Math.min(1, (state.dmg || 0) / 100) * R.marks.length); R.marks.forEach((m, i) => { m.visible = i < nmk; }); R.metal.roughness = .22 + Math.min(1, (state.dmg || 0) / 100) * .25;
   R.visorMat.emissiveIntensity = state.ko ? (Math.random() < .3 ? 2 : .1) : 1.6 - Math.min(1, state.dmg / 100) * (Math.random() < .08 ? 1.4 : 0);
 }
 
@@ -1361,31 +1394,44 @@ GAMES.brawl = {
     if(this.L) this.tick(g);
   },
   colorScreen(g){
-    const p = me(), cols = g.colors || {}, mine = cols[p], theirs = cols[opp(p)];
-    this.view = "colors"; this.root.innerHTML = "";
-    const w = el(`<div><div class="status mine">Pick your robot</div><div class="picks">${BB_COLORS.map(([n, c]) => `<button class="pick" data-c="${c}" style="background:${c};color:#161A4A" ${theirs === c || mine ? "disabled" : ""}>${n}<small>${theirs === c ? esc(nm(opp(p))) + "'s" : mine === c ? "Yours" : ""}</small></button>`).join("")}</div>
-      <p class="center" style="color:var(--paper)">${mine ? `Waiting for ${esc(nm(opp(p)))} to pick…` : ""}</p></div>`);
-    w.querySelectorAll("[data-c]").forEach(b => b.onclick = () => txg(gs => { gs.colors ||= {}; if(gs.colors[p] || Object.values(gs.colors).includes(b.dataset.c)) return false; gs.colors[p] = b.dataset.c; }));
+    const p = me(), cols = g.colors || {}, mine = cols[p], theirs = cols[opp(p)], key = JSON.stringify(cols);
+    if(this.view === "colors" && this.colKey === key) return;
+    this.view = "colors"; this.colKey = key; this.root.innerHTML = "";
+    const w = el(`<div><div class="status mine">Build your robot</div>
+      ${mine ? "" : `<input class="bb-nm" maxlength="14" placeholder="Robot name" value="${esc(this.nameDraft || "")}"><div class="err" data-e style="min-height:0;margin:0 0 6px"></div>`}
+      <div class="picks">${BB_COLORS.map(([n, c]) => `<button class="pick" data-c="${c}" style="background:${c};color:#161A4A" ${theirs === c || mine ? "disabled" : ""}>${n}<small>${theirs === c ? esc(nm(opp(p))) + "'s" : mine === c ? "Yours" : ""}</small></button>`).join("")}</div>
+      <p class="center" style="color:var(--paper)">${mine ? `Waiting for ${esc(nm(opp(p)))}…` : "Name it, then pick a color."}</p></div>`);
+    const inp = w.querySelector(".bb-nm"), er = w.querySelector("[data-e]");
+    if(inp) inp.oninput = () => { this.nameDraft = inp.value; };
+    w.querySelectorAll("[data-c]").forEach(b => b.onclick = () => {
+      const nmv = (inp?.value || "").trim() || nm(p);
+      if(!isClean(nmv)){ if(er) er.textContent = "Pick a different name."; return; }
+      txg(gs => { gs.colors ||= {}; if(gs.colors[p] || Object.values(gs.colors).includes(b.dataset.c)) return false; gs.colors[p] = b.dataset.c; gs.rnames ||= {}; gs.rnames[p] = nmv; });
+    });
     this.root.append(w);
   },
+  rn(p){ return this.g?.rnames?.[p] || nm(p); },
+  colName(p){ const c = this.g?.colors?.[p]; return (BB_COLORS.find(x => x[1] === c)?.[0] || "").toLowerCase(); },
   build(T){
     const p = me(), o = opp(p), g = this.g;
     this.root.innerHTML = "";
     const wrap = el(`<div class="bb"><canvas></canvas>
-      <div class="bb-hud"><div class="bb-side"><b>${esc(nm(p))}</b><div class="bb-bar"><i data-dm></i></div></div>
+      <div class="bb-hud"><div class="bb-side"><b>${esc(this.rn(p))}</b><div class="bb-bar"><i data-dm></i></div></div>
         <div class="bb-mid"><div data-rd></div><div class="bb-time" data-tm></div></div>
-        <div class="bb-side r"><b>${esc(nm(o))}</b><div class="bb-bar"><i data-do></i></div></div></div>
+        <div class="bb-side r"><b>${esc(this.rn(o))}</b><div class="bb-bar"><i data-do></i></div></div></div>
       <div class="bb-big" data-big></div>
       <div class="bb-sta"><span>Stamina</span><div class="bb-bar"><i data-st></i></div></div>
-      <div class="bb-touch"><span>Punch left</span><span>Hold both: block</span><span>Punch right</span></div></div>`);
+      <div class="bb-rep" data-rep>KO REPLAY</div>
+      <div class="bb-gl l" data-gl>${BB_GLOVE}</div><div class="bb-gl r" data-gr>${BB_GLOVE}</div><div class="bb-blkl">Hold both to block</div></div>`);
     this.root.append(wrap);
     const cv = wrap.querySelector("canvas"), q = s => wrap.querySelector(s);
-    const L = this.L = {T, timers: [], unsubs: [], raf: 0, cv, el: {dm: q("[data-dm]"), dO: q("[data-do]"), st: q("[data-st]"), rd: q("[data-rd]"), tm: q("[data-tm]"), big: q("[data-big]")},
+    const L = this.L = {T, timers: [], unsubs: [], raf: 0, cv, el: {dm: q("[data-dm]"), dO: q("[data-do]"), st: q("[data-st]"), rd: q("[data-rd]"), tm: q("[data-tm]"), big: q("[data-big]"), gl: q("[data-gl]"), gr: q("[data-gr]"), rep: q("[data-rep]")}, rec: [], koAt: 0, replay: null, clip: null, said: {},
       sta: 100, dmg: 0, oppDmg: 0, round: 0, sdn: -1, blk: false, stunUntil: 0, lastPunch: 0, myP: {l: null, r: null}, opP: {l: null, r: null}, punchId: 0, seen: 0, held: {l: 0, r: 0}, pts: new Map(),
       oppState: null, finSent: "", koSent: 0, effects: [], bolts: [], sparks: [], excite: 0, lastBigShown: "", lastSec: null};
     const renderer = L.renderer = new T.WebGLRenderer({canvas: cv, antialias: true}); renderer.setPixelRatio(Math.min(2, devicePixelRatio || 1));
     renderer.shadowMap.enabled = true; renderer.shadowMap.type = T.PCFSoftShadowMap; renderer.outputEncoding = T.sRGBEncoding;
     const scene = L.scene = new T.Scene(); scene.background = new T.Color(0x05060f); scene.fog = new T.Fog(0x05060f, 9, 26);
+    try{ scene.environment = bbEnv(T, renderer); }catch(e){ console.warn("env", e); }
     const cam = L.cam = new T.PerspectiveCamera(60, 1, .1, 60);
     const fit = L.onResize = () => { const w = cv.clientWidth, h = cv.clientHeight; renderer.setSize(w, h, false); cam.aspect = w / h; cam.updateProjectionMatrix(); };
     window.addEventListener("resize", fit);
@@ -1420,11 +1466,26 @@ GAMES.brawl = {
       const row = i % 9, ang = (i / N) * Math.PI * 2 * 9 % (Math.PI * 2) + row * .07, r = 6.3 + row * .75, y = .5 + row * .42;
       if(Math.abs(Math.sin(ang)) > .985 && Math.cos(ang) > 0 && row < 3) { people.push(null); continue; }
       people.push({x: Math.cos(ang) * r, z: Math.sin(ang) * r, y, ph: Math.random() * 6.28, sp: 6 + Math.random() * 5, jump: .4 + Math.random() * .6});
-      col.setHex(shirt[rnd(shirt.length)]); body.setColorAt(i, col); col.setHex(skin[rnd(skin.length)]); heads.setColorAt(i, col);
+      col.setHex(shirt[rnd(shirt.length)]); body.setColorAt(i, col); const sk = skin[rnd(skin.length)]; people[i].skin = sk; col.setHex(sk); heads.setColorAt(i, col);
     }
     scene.add(body, heads);
     for(let row = 0; row < 9; row++){ const st = new T.Mesh(new T.CylinderGeometry(6.3 + row * .75 + .4, 6.3 + row * .75 + .4, .42, 48, 1, true), new T.MeshStandardMaterial({color: 0x15172b, roughness: 1, side: T.BackSide})); st.position.y = .05 + row * .42; scene.add(st); }
-    L.crowdMesh = {body, heads, people, m4};
+    const arms = new T.InstancedMesh(new T.CylinderGeometry(.045, .04, .42, 6), new T.MeshStandardMaterial({roughness: .8}), N * 2);
+    people.forEach((pp, i) => { if(!pp) return; col.setHex(pp.skin); arms.setColorAt(i * 2, col); arms.setColorAt(i * 2 + 1, col); const r = Math.hypot(pp.x, pp.z); pp.tx = -pp.z / r; pp.tz = pp.x / r; pp.thr = .15 + Math.random() * .55; });
+    scene.add(arms);
+    L.crowdMesh = {body, heads, arms, people, m4};
+    // jumbotron
+    const sbC = document.createElement("canvas"); sbC.width = 512; sbC.height = 160; const sbTex = new T.CanvasTexture(sbC); sbTex.encoding = T.sRGBEncoding;
+    const vidC = bbTextTex(T, "BOLT BRAWL", 512, 288, "#0b0d22", "#FFC93C", "bold 72px Impact, sans-serif");
+    const rt = new T.WebGLRenderTarget(320, 180); rt.texture.encoding = T.sRGBEncoding;
+    const dark = new T.MeshStandardMaterial({color: 0x15172b, metalness: .7, roughness: .4});
+    const sbMat = new T.MeshBasicMaterial({map: sbTex}), vidMat = new T.MeshBasicMaterial({map: vidC});
+    const jumbo = new T.Group(); jumbo.position.y = 5.3; scene.add(jumbo);
+    const top = new T.Mesh(new T.BoxGeometry(2.6, .8, 2.6), [sbMat, sbMat, dark, dark, sbMat, sbMat]); top.position.y = .75; jumbo.add(top);
+    const vid = new T.Mesh(new T.BoxGeometry(2.6, 1.4, 2.6), [vidMat, vidMat, dark, dark, vidMat, vidMat]); vid.position.y = -.35; jumbo.add(vid);
+    const cable = new T.Mesh(new T.CylinderGeometry(.03, .03, 3, 6), dark); cable.position.y = 2.6; jumbo.add(cable);
+    L.jumbo = {group: jumbo, sbC, sbTex, vidMat, logo: vidC, rt, last: 0};
+    L.repCam = new T.PerspectiveCamera(42, 16 / 9, .1, 60);
     // flashes
     L.flashes = []; for(let i = 0; i < 6; i++){ const f = new T.PointLight(0xffffff, 0, 4); scene.add(f); L.flashes.push(f); }
     // robots
@@ -1458,10 +1519,11 @@ GAMES.brawl = {
   roundInfo(g){ const at = g.at ? localAt(g.at) : null, dur = (g.sdn ? BB.sd : BB.round) * 1000; return {at, dur, t: at ? api.now() - at : -1e9}; },
   tick(g){
     const L = this.L, p = me(); if(!L) return;
-    if(!g.at) txg(gs => { if(gs.at) return false; gs.at = api.now() + 3000; });
+    if(!g.at) txg(gs => { if(gs.at) return false; gs.at = api.now() + (gs.round === 1 && cfg().announcer !== false ? 9500 : 3000); });
+    if(g.done && api.now() >= g.done.at && !L.doneSent){ L.doneSent = 1; txg((gs, cur) => { if(!gs.done) return false; endIn(cur, gs.done.w, gs.done.d); }); }
     if(L.round !== g.round || L.sdn !== (g.sdn || 0)){
       const newRound = L.round !== g.round; L.round = g.round; L.sdn = g.sdn || 0; L.finSent = ""; L.lastSec = null;
-      if(newRound){ L.dmg = 0; L.sta = 100; L.stunUntil = 0; L.koSent = 0; L.myP = {l: null, r: null}; L.opP = {l: null, r: null}; L.oppDmg = 0; L.oppState = null; }
+      if(newRound){ L.koAt = 0; L.replay = null; L.rec = []; L.dmg = 0; L.sta = 100; L.stunUntil = 0; L.koSent = 0; L.myP = {l: null, r: null}; L.opP = {l: null, r: null}; L.oppDmg = 0; L.oppState = null; }
       api.update(L.myKey, {round: g.round, dmg: L.dmg, blk: false, stun: 0, punches: [], pid: L.punchId});
     }
     const w = g.wins || {};
@@ -1475,8 +1537,9 @@ GAMES.brawl = {
   },
   endRound(gs, cur, w, how){
     gs.wins ||= {}; gs.wins[w] = (gs.wins[w] || 0) + 1; gs.last = {round: gs.round, w, how};
-    if(gs.wins[w] >= 2){ endIn(cur, w, `${nm(w)} won ${gs.wins[w]}–${gs.wins[opp(w)] || 0}${how === "KO" ? " by knockout" : ""}`); return; }
-    gs.round++; gs.sdn = 0; gs.at = api.now() + 5500; delete gs.fin;
+    const rep = how === "KO" && cfg().replay !== false;
+    if(gs.wins[w] >= 2){ gs.done = {w, d: `${nm(w)} won ${gs.wins[w]}–${gs.wins[opp(w)] || 0}${how === "KO" ? " by knockout" : ""}`, at: api.now() + (rep ? 5600 : 2800)}; delete gs.fin; return; }
+    gs.round++; gs.sdn = 0; gs.at = api.now() + (rep ? 8000 : 5500); delete gs.fin;
   },
   onOpp(v){
     const L = this.L; if(!L || !v || v.round !== L.round) return;
@@ -1501,7 +1564,7 @@ GAMES.brawl = {
     L.recent = (L.recent || []).concat(pu).slice(-4);
     api.update(L.myKey, {punches: L.recent, pid: L.punchId});
     L.timers.push(setTimeout(() => { if(!this.L) return; const os = L.oppState; const blocked = os && os.blk && !(os.stun > api.now());
-      if(blocked){ bbThud(); this.sparks(L.op, 10, true); } }, BB.windup));
+      if(blocked){ bbThud(); this.sparks(L.op, 10, true); } else { L.hit.position.copy(this.headPos(L.op)); L.hit.intensity = 2.2; } }, BB.windup));
   },
   stun(){ const L = this.L; L.stunUntil = api.now() + BB.stun; api.update(L.myKey, {stun: L.stunUntil, blk: false}); bbSizzle(); L.crowd.excite(.5); },
   incoming(pu){
@@ -1513,7 +1576,7 @@ GAMES.brawl = {
     if(L.dmg >= 100 && !L.koSent){ L.koSent = 1; const r = L.round; txg((gs, cur) => { if(gs.round !== r || gs.last?.round === r) return false; this.endRound(gs, cur, opp(me()), "KO"); }); }
   },
   fx(R, onMe, d){
-    const L = this.L; bbClank(Math.min(1.2, .6 + d / 15)); bbSizzle(); R.shake = .35; this.sparks(R, 30 + d * 2, false);
+    const L = this.L; L.fxFlag = R === L.me ? 1 : 2; bbClank(Math.min(1.2, .6 + d / 15)); bbSizzle(); R.shake = .35; this.sparks(R, 30 + d * 2, false);
     if(Math.random() < .7) this.bolt(R); if(d > 11) this.bolt(R);
     const dm = onMe ? L.dmg : L.oppDmg; L.crowd.excite(dm >= 100 ? 1 : d > 11 ? .55 : .3); L.excite = Math.min(1, L.excite + .35);
     if(dm >= 100){ bbBoing(); bbBell(3); L.crowd.excite(1); L.excite = 1; }
@@ -1533,6 +1596,7 @@ GAMES.brawl = {
   frame(dt, t){
     const L = this.L, g = this.g, p = me(); if(!L) return;
     const {at, dur, t: rt} = this.roundInfo(g), nowP = performance.now();
+    if(g.done && api.now() >= g.done.at && !L.doneSent) this.tick(g);
     // stamina
     const blk = this.blocking();
     if(blk !== L.blk){ L.blk = blk; api.update(L.myKey, {blk}); }
@@ -1557,8 +1621,15 @@ GAMES.brawl = {
       big = "Time";
     }
     if(L.koSent) big = "KNOCKED OUT"; else if(this.oppKO()) big = "KO!";
+    // announcer
+    const sayOnce = (k, txt) => { if(!L.said[k]){ L.said[k] = 1; bbSay(txt); } };
+    if(at && rt < 0 && g.round === 1 && !g.sdn){ sayOnce("intro", `Ladies and gentlemen! In the ${this.colName("p1")} corner, ${this.rn("p1")}! And in the ${this.colName("p2")} corner, ${this.rn("p2")}!`); if(rt < -3200) big = `${this.rn("p1")} vs ${this.rn("p2")}`; }
+    if(at && rt < 0 && rt > -3600 && g.round > 1 && !g.sdn) sayOnce("r" + g.round, `Round ${g.round}!`);
+    if(at && rt < 0 && g.sdn) sayOnce("sd" + g.round + g.sdn, "Sudden death!");
+    if((L.koSent || this.oppKO()) && !L.koAt){ L.koAt = nowP; bbSay("Knockout!"); L.said["ko" + g.round] = 1;
+      if(cfg().replay !== false){ const from = nowP - 1300, to = nowP + 500; L.replay = {start: nowP + 1000, from, to, dur: 3000}; } }
+    if(g.done){ big = `${this.rn(g.done.w)} WINS`; sayOnce("win", `And the winner, ${this.rn(g.done.w)}!`); }
     if(this.stunned() && !big) big = "STUNNED";
-    if(big !== L.lastBigShown){ L.lastBigShown = big; L.el.big.textContent = big; L.el.big.style.opacity = big ? 1 : 0; }
     L.el.tm.textContent = at && rt >= 0 ? Math.max(0, Math.ceil((dur - rt) / 1000)) : "";
     L.el.dm.style.width = L.dmg + "%"; L.el.dO.style.width = L.oppDmg + "%"; L.el.st.style.width = L.sta + "%";
     L.el.st.style.background = L.sta < 25 ? "var(--bad)" : "var(--good)";
@@ -1566,17 +1637,36 @@ GAMES.brawl = {
     const os = L.oppState || {};
     bbPose(L.me, t, nowP, {punches: L.myP, blk, stun: this.stunned(), ko: L.dmg >= 100, dmg: L.dmg});
     bbPose(L.op, t, nowP, {punches: L.opP, blk: !!os.blk && !(os.stun > api.now()), stun: os.stun > api.now(), ko: L.oppDmg >= 100, dmg: L.oppDmg});
-    // camera
+    // record for KO replay
+    L.rec.push({tp: nowP, a: bbSnap(L.me), b: bbSnap(L.op), fx: L.fxFlag || 0}); L.fxFlag = 0;
+    while(L.rec.length && L.rec[0].tp < nowP - 4000) L.rec.shift();
+    const Rp = L.replay; let inReplay = false;
+    if(Rp && !Rp.clip && nowP >= Rp.start){ Rp.clip = L.rec.filter(f => f.tp >= Rp.from && f.tp <= Rp.to); if(!Rp.clip.length) L.replay = null; }
+    const clipFrame = (clip, u) => clip[Math.min(clip.length - 1, Math.floor(u * clip.length))];
+    if(Rp && Rp.clip && nowP < Rp.start + Rp.dur){
+      inReplay = true; const u = (nowP - Rp.start) / Rp.dur, f = clipFrame(Rp.clip, u);
+      bbApply(L.me, f.a); bbApply(L.op, f.b);
+      if(f.fx && Rp.lastFx !== f){ Rp.lastFx = f; this.sparks(f.fx === 1 ? L.me : L.op, 40, false); bbClank(.5); }
+      big = "";
+    }
+    L.el.rep.style.opacity = inReplay ? 1 : 0;
+    if(big !== L.lastBigShown){ L.lastBigShown = big; L.el.big.textContent = big; L.el.big.style.opacity = big ? 1 : 0; }
+    // gloves
+    L.el.gl.classList.toggle("on", L.held.l > 0); L.el.gr.classList.toggle("on", L.held.r > 0);
+    // camera: full orbit, or low ringside during replay
     const sh = (L.cam.userData.shake || 0); L.cam.userData.shake = sh * .88;
-    L.cam.position.set(.78 + Math.sin(t * .5) * .05 + (Math.random() - .5) * sh, 3.35 + Math.sin(t * .7) * .03 + (Math.random() - .5) * sh, 3.7);
-    L.cam.lookAt(-.12, 1.55, -.95);
+    if(inReplay){ const u = (nowP - Rp.start) / Rp.dur; L.cam.position.set(3.1 - u * .5, 1.05 + u * .3, .9 - u * 1.8); L.cam.lookAt(0, 1.75, 0); }
+    else { const ang = t * (Math.PI * 2 / 50); L.cam.position.set(Math.sin(ang) * 4.9 + (Math.random() - .5) * sh, 3.4 + Math.sin(t * .4) * .15 + (Math.random() - .5) * sh, Math.cos(ang) * 4.9); L.cam.lookAt(0, 1.45, 0); }
     // crowd
     L.excite = Math.max(0, L.excite - dt * .25);
     const C = L.crowdMesh, ex = .15 + L.excite;
     C.people.forEach((pp, i) => { if(!pp) { C.m4.makeScale(0, 0, 0); C.body.setMatrixAt(i, C.m4); C.heads.setMatrixAt(i, C.m4); return; }
       const j = Math.max(0, Math.sin(t * pp.sp + pp.ph)) * pp.jump * ex * .35;
-      C.m4.makeTranslation(pp.x, pp.y + .28 + j, pp.z); C.body.setMatrixAt(i, C.m4); C.m4.makeTranslation(pp.x, pp.y + .68 + j, pp.z); C.heads.setMatrixAt(i, C.m4); });
-    C.body.instanceMatrix.needsUpdate = true; C.heads.instanceMatrix.needsUpdate = true;
+      C.m4.makeTranslation(pp.x, pp.y + .28 + j, pp.z); C.body.setMatrixAt(i, C.m4); C.m4.makeTranslation(pp.x, pp.y + .68 + j, pp.z); C.heads.setMatrixAt(i, C.m4);
+      const up = clamp((L.excite - pp.thr) * 3, 0, 1), wave = up * Math.sin(t * pp.sp * .7 + pp.ph) * .05;
+      [-1, 1].forEach((sd, k) => { C.m4.makeTranslation(pp.x + pp.tx * .22 * sd, pp.y + .28 + j + up * .52 + (k ? wave : -wave), pp.z + pp.tz * .22 * sd); C.arms.setMatrixAt(i * 2 + k, C.m4); }); });
+    C.people.forEach((pp, i) => { if(!pp){ C.m4.makeScale(0, 0, 0); C.arms.setMatrixAt(i * 2, C.m4); C.arms.setMatrixAt(i * 2 + 1, C.m4); } });
+    C.body.instanceMatrix.needsUpdate = true; C.heads.instanceMatrix.needsUpdate = true; C.arms.instanceMatrix.needsUpdate = true;
     L.flashes.forEach(f => { f.intensity *= .7; if(Math.random() < .004 + L.excite * .03){ const pp = C.people[rnd(C.people.length)]; if(pp){ f.position.set(pp.x, pp.y + 1, pp.z); f.intensity = 3; } } });
     L.hit.intensity *= .8;
     // sparks
@@ -1589,6 +1679,25 @@ GAMES.brawl = {
       b.vy -= 7 * dt; b.m.position.x += b.vx * dt; b.m.position.y += b.vy * dt; b.m.position.z += b.vz * dt; b.m.rotation.x += b.rx * dt; b.m.rotation.z += b.rz * dt;
       if(b.m.position.y < .33){ b.m.position.y = .33; b.vy = Math.abs(b.vy) * .4; b.vx *= .7; b.vz *= .7; b.rx *= .6; b.rz *= .6; if(Math.abs(b.vy) > .5) bbClank(.08); }
       return true; });
+    // jumbotron scoreboard
+    const J = L.jumbo;
+    if(nowP - J.last > 250){ J.last = nowP; const x = J.sbC.getContext("2d"), w = g.wins || {}, n1 = this.rn("p1"), n2 = this.rn("p2"), d1 = p === "p1" ? L.dmg : L.oppDmg, d2 = p === "p2" ? L.dmg : L.oppDmg;
+      x.fillStyle = "#0b0d22"; x.fillRect(0, 0, 512, 160); x.font = "bold 30px Impact, sans-serif"; x.textBaseline = "top";
+      x.fillStyle = g.colors?.p1 || "#fff"; x.textAlign = "left"; x.fillText(n1.toUpperCase(), 16, 12); x.fillStyle = g.colors?.p2 || "#fff"; x.textAlign = "right"; x.fillText(n2.toUpperCase(), 496, 12);
+      x.fillStyle = "#FFC93C"; x.textAlign = "center"; x.font = "bold 44px Impact, sans-serif"; x.fillText(`${w.p1 || 0} – ${w.p2 || 0}`, 256, 52);
+      x.font = "bold 22px Impact, sans-serif"; x.fillStyle = "#fff"; x.fillText(L.clipLoop ? "KO REPLAY" : (at && rt >= 0 && rt < dur ? `ROUND ${g.round} · ${Math.max(0, Math.ceil((dur - rt) / 1000))}` : `ROUND ${g.round}`), 256, 108);
+      [[16, d1, g.colors?.p1], [296, d2, g.colors?.p2]].forEach(([bx, dv, c]) => { x.strokeStyle = "#fff"; x.lineWidth = 3; x.strokeRect(bx, 60, 200, 22); x.fillStyle = "#E5412F"; x.fillRect(bx + 2, 62, 196 * dv / 100, 18); });
+      J.sbTex.needsUpdate = true; }
+    // loop the KO clip on the big screen until the next round starts
+    if(Rp && Rp.clip && nowP >= Rp.start + Rp.dur && (rt < 0 || g.done)) L.clipLoop = Rp.clip; else if(!(Rp && Rp.clip)) L.clipLoop = null;
+    if(L.clipLoop && !inReplay){
+      const clip = L.clipLoop, u = ((nowP - Rp.start) % Rp.dur) / Rp.dur, f = clipFrame(clip, u), sa = bbSnap(L.me), sb = bbSnap(L.op);
+      bbApply(L.me, f.a); bbApply(L.op, f.b); J.group.visible = false;
+      L.repCam.position.set(3.1 - u * .5, 1.05 + u * .3, .9 - u * 1.8); L.repCam.lookAt(0, 1.75, 0);
+      L.renderer.setRenderTarget(J.rt); L.renderer.render(L.scene, L.repCam); L.renderer.setRenderTarget(null);
+      bbApply(L.me, sa); bbApply(L.op, sb); J.group.visible = true;
+      if(J.vidMat.map !== J.rt.texture){ J.vidMat.map = J.rt.texture; J.vidMat.needsUpdate = true; }
+    } else if(J.vidMat.map !== J.logo){ J.vidMat.map = J.logo; J.vidMat.needsUpdate = true; }
     L.renderer.render(L.scene, L.cam);
   }
 };
@@ -1786,7 +1895,7 @@ const BOTS = {
   },
   brawl(g, B){
     const cols = g.colors || {};
-    if(!cols.p2){ if(cols.p1 && !B.colQ){ B.colQ = 1; later(800, () => txg(gs => { gs.colors ||= {}; if(gs.colors.p2) return false; const free = BB_COLORS.map(c => c[1]).filter(c => c !== gs.colors.p1); gs.colors.p2 = free[rnd(free.length)]; })); } return; }
+    if(!cols.p2){ if(cols.p1 && !B.colQ){ B.colQ = 1; later(800, () => txg(gs => { gs.colors ||= {}; if(gs.colors.p2) return false; const free = BB_COLORS.map(c => c[1]).filter(c => c !== gs.colors.p1); gs.colors.p2 = free[rnd(free.length)]; gs.rnames ||= {}; gs.rnames.p2 = ROBO_NAMES[rnd(ROBO_NAMES.length)]; })); } return; }
     const myKey = `${S.code}_bb_p2`, opKey = `${S.code}_bb_p1`;
     if(!B.bb){ B.bb = {round: null, sdn: null, dmg: 0, blk: false, blkUntil: 0, pid: 0, recent: [], seen: 0, next: 0, sta: 100, finK: null, ko: false}; B.unsub = api.listen(opKey, v => botBrawlOpp(v)); }
     const s = B.bb;
@@ -1908,14 +2017,16 @@ function homeScreen(err = ""){
   };
 }
 
-const CFG_DEFAULT = {crash: 1, shellTime: 10, shellView: "replay", repick: true};
+const CFG_DEFAULT = {crash: 1, shellTime: 10, shellView: "replay", repick: true, announcer: true, replay: true};
 function getCfg(){ try{ return Object.assign({}, CFG_DEFAULT, JSON.parse(localStorage.getItem("grudge_cfg") || "{}")); }catch{ return {...CFG_DEFAULT}; } }
 const cfg = () => Object.assign({}, CFG_DEFAULT, R?.cfg || {});
 const CFG_OPTS = [
   ["crash", "Cube Runner crashes", [[1, "1"], [3, "3"]]],
   ["shellTime", "Coconut shuffle time", [[10, "10s"], [15, "15s"]]],
   ["shellView", "Coconut moves shown", [["replay", "Replay"], ["live", "Live"]]],
-  ["repick", "Best of 1: re-pick declined game", [[true, "Yes"], [false, "No"]]]
+  ["repick", "Best of 1: re-pick declined game", [[true, "Yes"], [false, "No"]]],
+  ["announcer", "Bolt Brawl announcer", [[true, "On"], [false, "Off"]]],
+  ["replay", "Bolt Brawl KO replay", [[true, "On"], [false, "Off"]]]
 ];
 const cfgText = (c) => CFG_OPTS.map(([k, label, opts]) => `${label}: ${opts.find(o => o[0] === c[k])?.[1] ?? c[k]}`).join(" · ");
 function settingsScreen(){
