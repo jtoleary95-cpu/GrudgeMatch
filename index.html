@@ -177,7 +177,9 @@ input:focus-visible,button:focus-visible{outline:3px solid var(--pink);outline-o
 .pchip b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:800}
 .pchip span{font-family:var(--display);font-size:20px;line-height:1.1}
 .pchip.me{box-shadow:3px 3px 0 var(--ink)}
-.pneed{color:var(--paper);opacity:.8;font-size:13px;font-weight:800;text-align:right;margin:0 0 10px}
+.pneed{display:flex;justify-content:space-between;align-items:center;color:var(--paper);font-size:13px;font-weight:800;margin:0 0 10px}
+.pneed span{opacity:.8}
+.pleave{font:800 13px var(--body);color:var(--paper);background:transparent;border:2px solid rgba(255,247,230,.5);border-radius:10px;padding:4px 10px;cursor:pointer}
 .pbar{height:10px;background:rgba(255,255,255,.25);border:2px solid var(--ink);border-radius:7px;overflow:hidden;margin:0 0 12px}
 .pbar i{display:block;height:100%;width:100%;background:var(--sun)}
 .plist{display:grid;gap:6px;margin:12px 0 0}
@@ -359,7 +361,7 @@ const onlineApi = LOCAL ? (() => {
       ready.then(() => { if(dead) return; off = F.onSnapshot(ref(c), s => { if(!s.exists() && s.metadata.fromCache) return; cb(s.exists() ? s.data() : null); }, () => {}); });
       return () => { dead = true; off(); }; },
     async get(c){ await ready; const s = await F.getDoc(ref(c)); return s.exists() ? s.data() : null; },
-    async update(c, patch){ await ready; const p = {}; for(const k in patch) p[k.replace(/\//g, ".")] = patch[k];
+    async update(c, patch){ await ready; const p = {}; for(const k in patch){ const v = patch[k]; p[k.replace(/\//g, ".")] = v === undefined ? null : (v && typeof v === "object") ? JSON.parse(JSON.stringify(v)) : v; }
       try{ return await F.updateDoc(ref(c), p); }
       catch(e){ if(e?.code !== "not-found") throw e; const v = {}; for(const k in patch) setPath(v, k, patch[k]); return F.setDoc(ref(c), prune(v) || {}, {merge: true}); } },
     async tx(c, mut){ await ready;
@@ -2295,7 +2297,7 @@ function over(){
 function render(){
   if(!S || !R) return;
   const k0 = mounted.key;
-  if(R.party){ if(!R.seats?.[S.pid]){ leave(); return; } if(!R.seats?.p1){ hostGone(); return; } partyRender(); }
+  if(R.party){ if(!R.seats?.[S.pid]){ leave(); return; } partyRender(); }
   else {
     if(!R.players?.[S.pid]){ leave(); return; }
     ({lobby, playing, result, over, propose, approve, botpick})[R.phase]?.();
@@ -2328,7 +2330,8 @@ const pName = s => R?.seats?.[s]?.name || "?";
 const pBot = s => !!R?.seats?.[s]?.bot;
 const pHumans = () => pSeats().filter(s => !pBot(s));
 const pCol = s => PCOLS[Math.max(0, pSeats().indexOf(s)) % 6];
-const pHost = () => S?.pid === "p1";
+const pHostId = () => (R?.host && R.seats?.[R.host]) ? R.host : (R?.host || "p1");
+const pHost = () => S?.pid === pHostId();
 const pg = () => R?.g || {};
 const pNeed = () => Math.ceil((R.bestOf || 3) / 2);
 const pLvl = () => ({easy: 0, medium: 1, hard: 2})[R?.diff] ?? 1;
@@ -2355,22 +2358,24 @@ function pCtx(g){
   return {
     now: nowS(), g, lvl: pLvl(), diff: R.diff, seats: arr(g.seats || pSeats()),
     memo(k){ const key = gn + ":" + k; if(PREF.memo[key]) return false; PREF.memo[key] = 1; return true; },
-    set(patch){ const p = {}; for(const k in patch) p["g/" + k] = patch[k] === undefined ? null : patch[k]; return api.update(S.code, p).catch(() => {}); },
-    replace(ng){ ng.seats = ng.seats || g.seats; return api.update(S.code, {g: ng}).catch(() => {}); },
+    set(patch){ const p = {}; for(const k in patch) p["g/" + k] = patch[k] === undefined ? null : patch[k]; return pUpd(p); },
+    replace(ng){ ng.seats = ng.seats || g.seats; return pUpd({g: ng}); },
     later(ms, f){ const id = setTimeout(() => { if(R?.party && R.gn === gn && R.phase === "play") f(); }, ms); PREF.timers.push(id); },
     win(seat, detail){ if(!this.memo("WIN")) return; pWin(seat, detail); }
   };
 }
+async function pUpd(patch){ for(let i = 0; i < 6; i++){ try{ return await api.update(S.code, patch); }catch(e){ console.warn("save retry", e); await sleep(300 + i * 500); } } }
+async function pTx(mut, still){ for(let i = 0; i < 8; i++){ try{ return await api.tx(S.code, mut); }catch(e){ console.warn("tx retry", e); await sleep(300 + i * 400); if(still && !still()) return false; } } return false; }
 function pWin(seat, detail){
   const gn = R.gn;
-  api.tx(S.code, cur => {
+  pTx(cur => {
     if(cur.phase !== "play" || cur.gn !== gn) return false;
     cur.score ||= {}; cur.score[seat] = (cur.score[seat] || 0) + 1;
     cur.result = {winner: seat, game: cur.current, detail: detail || "", n: gn};
     cur.last = cur.current;
     cur.phase = cur.score[seat] >= Math.ceil(cur.bestOf / 2) ? "over" : "result";
     cur.rp = (cur.phase === "result" && cur.seats?.[seat]?.bot) ? Date.now() : null;
-  }).catch(() => {});
+  }, () => R?.gn === gn && R.phase === "play");
 }
 function pStartGame(cur, id){
   cur.current = id; cur.gn = (cur.gn || 0) + 1; cur.phase = "intro"; cur.rdy = {}; delete cur.g; delete cur.rp;
@@ -2386,14 +2391,14 @@ function partyTick(){
       const id = R.current, seats = (PG[id].humansOnly ? humans : pSeats());
       const c = pCtx({seats}); c.seats = seats;
       const g = PG[id].init(c); g.seats = seats; g.in = {};
-      api.tx(S.code, cur => { if(cur.phase !== "intro" || cur.gn !== R.gn) return false; cur.g = g; cur.phase = "play"; }).catch(() => { delete PREF.memo["init" + R.gn]; });
+      const gn = R.gn; pTx(cur => { if(cur.phase !== "intro" || cur.gn !== gn) return false; cur.g = g; cur.phase = "play"; }).then(ok => { if(!ok && R?.phase === "intro" && R.gn === gn) delete PREF.memo["init" + gn]; });
     }
     return;
   }
   if(ph === "result" && R.rp && pBot(R.result?.winner)){
     if(Date.now() - R.rp > 1800 && PREF.memo["bp" + R.gn] !== 1){ PREF.memo["bp" + R.gn] = 1;
       const ids = PG_IDS().filter(id => id !== R.last && pAvail(id));
-      const id = pick1(ids); api.tx(S.code, cur => { if(cur.phase !== "result") return false; pStartGame(cur, id); }).catch(() => {}); }
+      const id = pick1(ids), gn = R.gn; pTx(cur => { if(cur.phase !== "result" || cur.gn !== gn) return false; pStartGame(cur, id); }, () => R?.phase === "result" && R.gn === gn).then(ok => { if(!ok && R?.phase === "result" && R.gn === gn) delete PREF.memo["bp" + gn]; }); }
     return;
   }
   if(ph !== "play" || !R.g) return;
@@ -2406,7 +2411,7 @@ function partyTick(){
 function pBoard(){
   const sc = R.score || {};
   return `<div class="pboard">${pSeats().map(s => `<div class="pchip${s === S.pid ? " me" : ""}" style="--c:${pCol(s)}"><b>${esc(pName(s))}${s === S.pid ? " (you)" : ""}</b><span>${sc[s] || 0}</span></div>`).join("")}</div>
-    <div class="pneed">${R.bestOf === 1 ? "One game decides it" : `First to ${pNeed()} game wins`}</div>`;
+    <div class="pneed"><button class="pleave" data-pl>Leave party</button><span>${R.bestOf === 1 ? "One game decides it" : `First to ${pNeed()} game wins`}</span></div>`;
 }
 function hostGone(){
   if(!pMount("hostgone", `<div><div class="card center"><h2>The host left</h2><p>This party has ended.</p><button class="btn" data-a="home">Back to start</button></div></div>`)) return;
@@ -2425,11 +2430,11 @@ function pLobby(){
       <p>${total >= 3 ? `${total} players ready to go.` : `Need at least 3 players. ${3 - total} more.`}</p>
       <button class="btn alt" data-a="invite">Send invite link</button></div>
     <div class="card"><h2 style="font-size:22px">Players</h2>
-      ${seats.map(s => `<p><span class="dot" style="background:${pCol(s)}"></span>${esc(pName(s))}${s === S.pid ? " (you)" : ""}${s === "p1" ? " · host" : ""}</p>`).join("")}
+      ${seats.map(s => `<p><span class="dot" style="background:${pCol(s)}"></span>${esc(pName(s))}${s === S.pid ? " (you)" : ""}${s === pHostId() ? " · host" : ""}</p>`).join("")}
       ${nb ? `<p class="muted">${nb} Robo${nb > 1 ? "s" : ""} (${(DIFFS.find(d => d[0] === R.diff) || [0, "Medium"])[1]}) join when the party starts.</p>` : ""}</div>
     ${host ? `<div class="card"><h2 style="font-size:22px">Robos</h2><div class="seg" role="group">${[0, 1, 2, 3, 4, 5].map(n => `<button data-n="${n}" aria-pressed="${n === nb}" ${humans + n > 6 ? "disabled" : ""}>${n}</button>`).join("")}</div>
       <label>Robo difficulty</label><div class="seg" role="group">${DIFFS.map(([k, t]) => `<button data-d="${k}" aria-pressed="${k === (R.diff || "medium")}">${t}</button>`).join("")}</div></div>
-      <button class="btn" data-a="go" ${total >= 3 ? "" : "disabled"}>Start party</button>` : `<div class="card center"><p class="muted">Waiting for ${esc(pName("p1"))} to start.</p></div>`}
+      <button class="btn" data-a="go" ${total >= 3 ? "" : "disabled"}>Start party</button>` : `<div class="card center"><p class="muted">Waiting for ${esc(pName(pHostId()))} to start.</p></div>`}
     <p class="detail center">${R.bestOf === 1 ? "One game." : `Best of ${R.bestOf}: first to ${pNeed()} wins.`}</p>
     <button class="btn ghost" data-a="leave">Leave</button></div>`)) return;
   const w = app.firstElementChild;
@@ -2518,6 +2523,25 @@ function pBarHtml(){ return `<div class="pbar"><i></i></div>`; }
 function pBarSet(root, start, end){ const i = root.querySelector(".pbar i"); if(!i) return; const f = clamp((end - nowS()) / (end - start), 0, 1); i.style.width = (f * 100) + "%"; }
 function pRaf(v, f){ const loop = () => { if(v.dead) return; v.raf = requestAnimationFrame(loop); f(); }; v.raf = requestAnimationFrame(loop); }
 function pWinners(scores, seats){ const top = Math.max(...seats.map(s => scores[s] || 0)); return seats.filter(s => Math.abs((scores[s] || 0) - top) < 1e-9); }
+
+/* ---------- leave from any screen ---------- */
+document.addEventListener("click", e => { if(e.target.closest && e.target.closest("[data-pl]") && confirm("Leave the party?")) leave(); });
+
+/* ---------- host heartbeat: if the host's phone goes quiet, the next player takes over ---------- */
+const HBW = {sub: null, code: null, seen: 0, last: 0, tryAt: 0};
+function partyWatch(){
+  if(!S?.party || !R?.party){ if(HBW.sub){ HBW.sub(); HBW.sub = null; HBW.code = null; } return; }
+  if(HBW.code !== S.code){ if(HBW.sub) HBW.sub(); HBW.code = S.code; HBW.seen = Date.now(); HBW.sub = api.listen(S.code + "_hb", v => { if(v) HBW.seen = Date.now(); }); }
+  const host = pHostId();
+  if(pHost()){ if(Date.now() - HBW.last > 2000){ HBW.last = Date.now(); HBW.seen = Date.now(); api.update(S.code + "_hb", {h: S.pid, t: Date.now()}).catch(() => {}); } return; }
+  const line = pHumans().filter(s => s !== host), k = line.indexOf(S.pid); if(k < 0) return;
+  const gone = !R.seats?.[host], quiet = Date.now() - HBW.seen;
+  if(!(gone || quiet > 10000 + k * 5000) || Date.now() - HBW.tryAt < 4000) return;
+  HBW.tryAt = Date.now();
+  pTx(cur => { const h = (cur.host && cur.seats?.[cur.host]) ? cur.host : (cur.host || "p1"); if(h !== host || !cur.seats?.[S.pid]) return false; cur.host = S.pid; })
+    .then(ok => { if(ok){ HBW.seen = Date.now(); PREF.memo = {}; PREF.B = {}; } });
+}
+setInterval(partyWatch, 1000);
 
 /* ---- Hot Potato ---- */
 PG.potato = {
@@ -2887,7 +2911,7 @@ function survivalRef(g, c, mk, verb){
   } else if(g.ph === "done" && c.now >= g.next && c.memo("nx" + g.round)){
     if(g.rw && (g.wins[g.rw] || 0) >= 2) return;
     const nx = g.re ? mk(arr(g.re), g.round + 1, 1) : mk(arr(g.seats), g.round + 1, 0);
-    c.replace(Object.assign(nx, {wins: g.wins, seats: g.seats, extra: g.extra}));
+    c.replace(Object.assign(nx, {wins: g.wins || {}, seats: g.seats}));
   }
 }
 function survivalMsg(g){
