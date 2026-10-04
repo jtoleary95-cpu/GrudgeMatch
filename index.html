@@ -258,7 +258,7 @@ const LOCAL = new URLSearchParams(location.search).has("local");
 const COLL = "mgames";
 const BAD=["CUM","DIC","COC","PUS","KOC","WHR","FAP","JAP","SPIC","SPC","CHNK","GOOK","GK","HOMO","HMO","TRAN","LES","LEZ","QUER","DYKE","KUM","JIZ","JZZ","SEX","SXY","SX","XXX","FUK","FUC","FUQ","FUX","FCK","FK","FKU","PHUK","CUNT","CNT","KUNT","COCK","COK","KOK","CCK","DIK","DICK","DCK","DIX","DYK","PUSS","PUSY","PSY","PSSY","TIT","TT","TWAT","TWT","VAG","VAJ","VJ","BJ","HJ","ANAL","ANL","ANUS","ASS","AZZ","BUTT","BUT","BUM","BUTTH","BOOB","BOB","NUT","NUTS","PORN","PRN","PORNO","HORNY","HRNY","HUMP","SLUT","SLT","WHORE","WHOR","HOE","HO","THOT","SUCK","SUK","SUCC","LICK","LCK","BLOW","BJOB","CLIT","CLT","PENIS","PENI","PNS","PEN","WANK","WNK","JERK","JRK","NUDE","NUD","FAG","FAGG","FGT","GAY","NIG","NIGG","NGR","NGGR","NGA","KKK","KK","NAZI","NAZ","NZ","HITLR","SHIT","SHT","SHT","CRAP","CRP","PISS","PIS","PSS","PEE","POO","POOP","TURD","DAMN","DMN","DAM","HELL","HEL","BTCH","BICH","BCH","BITCH","DUMB","STFU","WTF","FML","FU","KYS","DIE","KILL","RAPE","RAP","RAPY","MOLEST","PEDO","PED","CHILD","DRUG","METH","LSD","WEED","HMP","MILF","MLF","GILF","DILF","BDSM","BDS","KINK","NSFW","HENT","HNTY","XXL","SEXY","SEXI"];
 const BAD_ROOTS = ["FUCK", "SHIT", "CUNT", "NIGG", "FAGGOT", "WHORE", "PUSSY", "BITCH", "DILDO", "JIZZ", "MOLEST", "PORNO", "HITLER", "NAZI"];
-const BAD_WORDS = new Set(BAD.concat(["ASSES", "ASSHOLE", "DICKS", "COCKS", "TITS", "BOOBS", "RAPED", "RAPIST", "PENISES", "VAGINA", "SEXY", "NUDES", "HOES", "SLUTS", "FAGS", "NIGGER", "NIGGA", "KYS"]));
+const BAD_WORDS = new Set(["ASS", "ASSES", "ASSHOLE", "ARSE", "DICK", "DICKS", "COCK", "COCKS", "CUM", "TIT", "TITS", "TITTY", "BOOB", "BOOBS", "PENIS", "VAGINA", "SEX", "SEXY", "PORN", "SLUT", "SLUTS", "HOE", "HOES", "THOT", "FAG", "FAGS", "NIGGER", "NIGGA", "KKK", "RAPE", "RAPED", "RAPIST", "WTF", "FML", "KYS", "JIZZ", "WHORE", "TWAT", "WANK", "WANKER", "PISS", "CRAP", "DAMN", "SHAT", "NAZI", "SPIC", "CHINK", "GOOK", "DYKE", "JAP", "RETARD", "TRANNY", "DILDO", "ANAL", "ANUS", "SCROTUM", "BOLLOCKS", "PRICK", "BASTARD", "SPERM", "NUDE", "NUDES", "MILF", "BDSM", "STFU", "GTFO"]);
 function isCleanText(s){ const t = String(s).toUpperCase(); if(BAD_ROOTS.some(b => t.replace(/[^A-Z]/g, "").includes(b))) return false; return !t.split(/[^A-Z]+/).some(w => w && BAD_WORDS.has(w)); }
 function isClean(s){ const u = String(s).toUpperCase().replace(/[^A-Z]/g, ""); return !BAD.some(b => u.includes(b)); }
 
@@ -2085,14 +2085,14 @@ function homeScreen(err = ""){
   const newCode = async () => { const L = "ABCDEFGHJKMNPQRSTUVWXYZ"; let code; for(let i = 0; i < 10; i++){ code = [...Array(4)].map(() => L[rnd(L.length)]).join(""); if(!isClean(code)){ i--; continue; } if(!(await api.get(code))) break; } return code; };
   w.querySelector("[data-a=party]").onclick = async () => {
     const n = name(); if(!n){ errEl.textContent = "Enter your name first."; return; }
-    audio(); const code = await newCode();
+    errEl.textContent = "Creating…"; createWatch(errEl); audio(); const code = await newCode();
     try{ await api.update(code, {party: true, created: Date.now(), bestOf: pBest, cfg: getCfg(), phase: "lobby", nbots: 0, diff: "medium", "seats/p1": {name: n}}); }
     catch{ errEl.textContent = "Couldn't create the party. Check the Firestore rules."; return; }
     S = {code, pid: "p1", name: n, party: true}; saveS(); connect();
   };
   w.querySelector("[data-a=create]").onclick = async () => {
     const n = name(); if(!n){ errEl.textContent = "Enter your name first."; return; }
-    audio();
+    errEl.textContent = "Creating…"; createWatch(errEl); audio();
     const L = "ABCDEFGHJKMNPQRSTUVWXYZ"; let code;
     for(let i = 0; i < 10; i++){ code = [...Array(4)].map(() => L[rnd(L.length)]).join(""); if(!isClean(code)) { i--; continue; } if(!(await api.get(code))) break; }
     try{ await api.update(code, {created: Date.now(), bestOf, cfg: getCfg(), phase: "lobby", "players/p1": {name: n}, score: {p1: 0, p2: 0}}); }
@@ -3538,6 +3538,8 @@ PG.rush = {
   }; }
 };
 
+function createWatch(errEl){ const t0 = Date.now(), iv = setInterval(() => { if(!errEl.isConnected || errEl.textContent !== "Creating…"){ clearInterval(iv); return; } if(Date.now() - t0 > 10000){ clearInterval(iv); errEl.textContent = "Still can't reach the server. Check your connection and try again."; } }, 500); }
+window.addEventListener("unhandledrejection", e => { const el = document.querySelector(".err"); if(el && el.isConnected) el.textContent = "Couldn't connect: " + (e.reason && (e.reason.code || e.reason.message) || e.reason); });
 if(S) connect(); else homeScreen();
 if(INVITE) history.replaceState(null, "", location.pathname + (LOCAL ? "?local" : ""));
 </script>
